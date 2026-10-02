@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+    <title>Ava WebSocket Test</title>
+</head>
+
+<body>
+
+    <h1>Ava WebSocket Test</h1>
+
+    <input id="message" placeholder="Say something">
+
+    <button onclick="sendMessage()">
+        Send
+    </button>
+
+    <div id="messages"></div>
+
+
+    <script>
+
+        const socket = new WebSocket(
+            "ws://127.0.0.1:8000/ws"
+        );
+
+
+        socket.onopen = function () {
+            console.log("Connected to Ava");
+        };
+
+
+        socket.onmessage = function (event) {
+
+            console.log(
+                "Server:",
+                event.data
+            );
+
+            const messages =
+                document.getElementById("messages");
+
+            messages.innerHTML +=
+                "<p>" + event.data + "</p>";
+        };
+
+
+        function sendMessage() {
+
+            const input =
+                document.getElementById("message");
+
+            socket.send(input.value);
+
+            input.value = "";
+        }
+
+    </script>
+
+</body>
+</html>

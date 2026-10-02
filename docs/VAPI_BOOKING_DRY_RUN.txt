@@ -1,0 +1,173 @@
+SAFETY: isolated temporary database; fake calendar; no Vapi/Google network calls.
+
+SCENARIO: interrupted_without_readback
+FAKE calendar.busy: checking availability
+FAKE calendar.busy: checking availability
+Interruption recorded; draft retained, confirmation still required.
+BEFORE CONFIRM: {"kind": "create", "turn": null, "speech_ms": null, "ready_ms": null, "agreement_ms": null, "affirmed_ms": null}
+ENTER vapi_api.py:91 tool_results
+ENTER vapi_actions.py:181 handle
+ENTER vapi_actions.py:223 execute
+ENTER vapi_actions.py:301 confirm
+LINE vapi_actions.py:302 confirm | completed = state.get('completed', {})
+LINE vapi_actions.py:303 confirm | if token in completed:
+LINE vapi_actions.py:305 confirm | pending = state.get('pending')
+LINE vapi_actions.py:306 confirm | if not pending or pending['token'] != token:
+LINE vapi_actions.py:308 confirm | if pending['fingerprint'] != fingerprint(settings) or int(time.time() * 1000) - pending['created_ms'] > 600000:
+LINE vapi_actions.py:311 confirm | if not pending.get('ready_ms') or not pending.get('affirmed_ms'):
+LINE vapi_actions.py:312 confirm | reason = pending.get('confirmation_reason', 'readback_or_agreement_missing')
+LINE vapi_actions.py:313 confirm | log.info('VAPI_CONFIRMATION_BLOCKED call_id=%s reason=%s', cid, reason)
+LINE vapi_actions.py:314 confirm | return {**fail('confirmation_not_verified'), 'reason': reason}
+RETURN vapi_actions.py:314 confirm | {"success": false, "status": "rejected", "code": "confirmation_not_verified", "reason": "readback_not_complete"}
+RETURN vapi_actions.py:225 execute | {"success": false, "status": "rejected", "code": "confirmation_not_verified", "reason": "readback_not_complete"}
+RETURN vapi_actions.py:183 handle | {"success": false, "status": "rejected", "code": "confirmation_not_verified", "reason": "readback_not_complete"}
+RETURN vapi_api.py:124 tool_results
+RESULT: {"success": false, "status": "rejected", "code": "confirmation_not_verified", "reason": "readback_not_complete"}
+CALENDAR WRITES THIS CONFIRM: 0
+
+SCENARIO: missing_evidence
+FAKE calendar.busy: checking availability
+FAKE calendar.busy: checking availability
+BEFORE CONFIRM: {"kind": "create", "turn": null, "speech_ms": null, "ready_ms": null, "agreement_ms": null, "affirmed_ms": null}
+ENTER vapi_api.py:91 tool_results
+ENTER vapi_actions.py:181 handle
+ENTER vapi_actions.py:223 execute
+ENTER vapi_actions.py:301 confirm
+LINE vapi_actions.py:302 confirm | completed = state.get('completed', {})
+LINE vapi_actions.py:303 confirm | if token in completed:
+LINE vapi_actions.py:305 confirm | pending = state.get('pending')
+LINE vapi_actions.py:306 confirm | if not pending or pending['token'] != token:
+LINE vapi_actions.py:308 confirm | if pending['fingerprint'] != fingerprint(settings) or int(time.time() * 1000) - pending['created_ms'] > 600000:
+LINE vapi_actions.py:311 confirm | if not pending.get('ready_ms') or not pending.get('affirmed_ms'):
+LINE vapi_actions.py:312 confirm | reason = pending.get('confirmation_reason', 'readback_or_agreement_missing')
+LINE vapi_actions.py:313 confirm | log.info('VAPI_CONFIRMATION_BLOCKED call_id=%s reason=%s', cid, reason)
+LINE vapi_actions.py:314 confirm | return {**fail('confirmation_not_verified'), 'reason': reason}
+RETURN vapi_actions.py:314 confirm | {"success": false, "status": "rejected", "code": "confirmation_not_verified", "reason": "readback_or_agreement_missing"}
+RETURN vapi_actions.py:225 execute | {"success": false, "status": "rejected", "code": "confirmation_not_verified", "reason": "readback_or_agreement_missing"}
+RETURN vapi_actions.py:183 handle | {"success": false, "status": "rejected", "code": "confirmation_not_verified", "reason": "readback_or_agreement_missing"}
+RETURN vapi_api.py:124 tool_results
+RESULT: {"success": false, "status": "rejected", "code": "confirmation_not_verified", "reason": "readback_or_agreement_missing"}
+CALENDAR WRITES THIS CONFIRM: 0
+
+SCENARIO: valid_confirmation
+FAKE calendar.busy: checking availability
+FAKE calendar.busy: checking availability
+BEFORE CONFIRM: {"kind": "create", "turn": 7, "speech_ms": 1790920878232, "ready_ms": 1790920878332, "agreement_ms": 1790920878432, "affirmed_ms": 1790920878432}
+ENTER vapi_api.py:91 tool_results
+ENTER vapi_actions.py:181 handle
+ENTER vapi_actions.py:223 execute
+ENTER vapi_actions.py:301 confirm
+LINE vapi_actions.py:302 confirm | completed = state.get('completed', {})
+LINE vapi_actions.py:303 confirm | if token in completed:
+LINE vapi_actions.py:305 confirm | pending = state.get('pending')
+LINE vapi_actions.py:306 confirm | if not pending or pending['token'] != token:
+LINE vapi_actions.py:308 confirm | if pending['fingerprint'] != fingerprint(settings) or int(time.time() * 1000) - pending['created_ms'] > 600000:
+LINE vapi_actions.py:311 confirm | if not pending.get('ready_ms') or not pending.get('affirmed_ms'):
+LINE vapi_actions.py:315 confirm | payload, kind = pending['payload'], pending['kind']
+LINE vapi_actions.py:319 confirm | with self.sessions() as db:
+LINE vapi_actions.py:320 confirm | op = db.scalar(select(Operation).where(Operation.business_id == bid, Operation.key == token))
+LINE vapi_actions.py:321 confirm | recovering = bool(op and op.kind == kind and op.status == 'completed')
+LINE vapi_actions.py:319 confirm | with self.sessions() as db:
+LINE vapi_actions.py:322 confirm | if kind in ('cancel', 'reschedule') and not recovering:
+LINE vapi_actions.py:325 confirm | if kind == 'message':
+LINE vapi_actions.py:335 confirm | scheduler = self.scheduler_for_business(bid)
+LINE vapi_actions.py:336 confirm | mutation = dict(payload)
+LINE vapi_actions.py:337 confirm | if kind in ('cancel', 'reschedule'):
+LINE vapi_actions.py:339 confirm | result = scheduler.mutate(bid, token, kind, mutation, True)
+ENTER scheduling.py:114 mutate
+LINE scheduling.py:115 mutate | if not confirmed: raise ValueError('Explicit confirmation is required.')
+LINE scheduling.py:116 mutate | if kind not in ('create','reschedule','cancel'): raise ValueError('Unknown action.')
+LINE scheduling.py:117 mutate | if not key or len(key)>100: raise ValueError('Invalid idempotency key.')
+LINE scheduling.py:120 mutate | with self.locked(business_id) as (db,settings):
+LINE scheduling.py:121 mutate | op = db.scalar(select(Operation).where(Operation.business_id==business_id,Operation.key==key))
+LINE scheduling.py:122 mutate | if op:
+LINE scheduling.py:127 mutate | unresolved = db.scalar(select(Operation).where(Operation.business_id==business_id,Operation.status.in_(['pending','uncertain'])))
+LINE scheduling.py:128 mutate | if unresolved: raise CalendarUnavailable('A previous calendar change needs reconciliation by staff.')
+LINE scheduling.py:129 mutate | op = Operation(business_id=business_id,key=key,kind=kind,payload=payload)
+LINE scheduling.py:130 mutate | db.add(op); db.flush()
+LINE scheduling.py:131 mutate | operation_id = op.id
+LINE scheduling.py:120 mutate | with self.locked(business_id) as (db,settings):
+LINE scheduling.py:132 mutate | error = None
+LINE scheduling.py:133 mutate | with self.locked(business_id) as (db,settings):
+LINE scheduling.py:134 mutate | op = db.get(Operation,operation_id)
+LINE scheduling.py:135 mutate | if op.status=='completed': return record(db.get(Appointment,op.result_id))
+LINE scheduling.py:136 mutate | try:
+LINE scheduling.py:137 mutate | result = self._execute(db,settings,op)
+ENTER scheduling.py:149 _execute
+LINE scheduling.py:150 _execute | payload = op.payload
+LINE scheduling.py:151 _execute | existing = None
+LINE scheduling.py:152 _execute | if op.kind=='create':
+LINE scheduling.py:153 _execute | booking = Booking.model_validate(payload)
+LINE scheduling.py:154 _execute | if booking.call_id:
+LINE scheduling.py:155 _execute | call=db.get(Call,booking.call_id)
+LINE scheduling.py:156 _execute | if not call or call.business_id!=op.business_id: raise ValueError('Call not found.')
+LINE scheduling.py:157 _execute | if settings.require_email and not booking.caller_email: raise ValueError('Email is required.')
+LINE scheduling.py:158 _execute | event_id = op.id  # hex is valid Google base32hex; stable across retries.
+LINE scheduling.py:166 _execute | event=calendar_read(self.calendar.get,event_id)
+FAKE calendar.get: existing event=False
+LINE scheduling.py:167 _execute | marker=(event or {}).get('extendedProperties',{}).get('private',{}).get('ava_operation')
+LINE scheduling.py:168 _execute | if op.kind=='cancel':
+LINE scheduling.py:171 _execute | if existing and existing.status!='booked': raise ValueError('Appointment is not active.')
+LINE scheduling.py:172 _execute | end=booking.start_at+timedelta(minutes=next((s.duration for s in settings.services if s.id==booking.service_id),30))
+LINE scheduling.py:173 _execute | if marker != op.id:
+LINE scheduling.py:174 _execute | if op.kind=='create' and event: raise CalendarUnavailable('Event ID exists with different ownership.')
+LINE scheduling.py:175 _execute | if op.kind=='reschedule' and not event: raise ValueError('Calendar event is missing; staff must review.')
+LINE scheduling.py:176 _execute | end=self.validate(settings,booking.service_id,booking.start_at)
+ENTER scheduling.py:62 validate
+RETURN scheduling.py:80 validate
+LINE scheduling.py:177 _execute | if not self.free(db,op.business_id,settings,booking.start_at,end,event_id if existing else None):
+ENTER scheduling.py:82 free
+FAKE calendar.busy: checking availability
+RETURN scheduling.py:89 free
+LINE scheduling.py:179 _execute | body={'summary':'Ava appointment', 'start':{'dateTime':booking.start_at.isoformat(),'timeZone':settings.timezone},
+LINE scheduling.py:180 _execute | 'end':{'dateTime':end.isoformat(),'timeZone':settings.timezone},
+LINE scheduling.py:181 _execute | 'extendedProperties':{'private':{'ava_operation':op.id,'ava_business':op.business_id}}}
+LINE scheduling.py:179 _execute | body={'summary':'Ava appointment', 'start':{'dateTime':booking.start_at.isoformat(),'timeZone':settings.timezone},
+LINE scheduling.py:182 _execute | event=(self.calendar.update(event_id,body,event['etag']) if existing else self.calendar.create(event_id,body))
+FAKE calendar.create: {"end": {"dateTime": "2026-10-03T09:30:00+00:00", "timeZone": "UTC"}, "extendedProperties": {"private": {"ava_business": "412ca350f68643ee8d2ac9ed8f891783", "ava_operation": "a9e33bee82e440d9907e1223b0bc78ac"}}, "start": {"dateTime": "2026-10-03T09:00:00+00:00", "timeZone": "UTC"}, "summary": "Ava appointment"}
+FAKE calendar.get: existing event=True
+LINE scheduling.py:185 _execute | start=datetime.fromisoformat(event['start']['dateTime'])
+LINE scheduling.py:186 _execute | end=datetime.fromisoformat(event['end']['dateTime'])
+LINE scheduling.py:187 _execute | if not existing:
+LINE scheduling.py:188 _execute | existing=Appointment(business_id=op.business_id,call_id=booking.call_id,
+LINE scheduling.py:189 _execute | caller_name=booking.caller_name,caller_phone=booking.caller_phone,
+LINE scheduling.py:190 _execute | caller_email=booking.caller_email,service_id=booking.service_id,
+LINE scheduling.py:191 _execute | start_at=start,end_at=end,timezone=settings.timezone,calendar_event_id=event_id)
+LINE scheduling.py:188 _execute | existing=Appointment(business_id=op.business_id,call_id=booking.call_id,
+LINE scheduling.py:192 _execute | db.add(existing)
+LINE scheduling.py:195 _execute | db.flush()
+LINE scheduling.py:196 _execute | return existing
+RETURN scheduling.py:196 _execute
+LINE scheduling.py:138 mutate | op.result_id,op.status = result.id,'completed'
+LINE scheduling.py:139 mutate | db.flush()
+LINE scheduling.py:140 mutate | result_data = record(result)
+LINE scheduling.py:133 mutate | with self.locked(business_id) as (db,settings):
+LINE scheduling.py:146 mutate | if error: raise error
+LINE scheduling.py:147 mutate | return result_data
+RETURN scheduling.py:147 mutate
+LINE vapi_actions.py:340 confirm | data = {key: result[key] for key in ('id', 'service_id', 'start_at', 'end_at', 'timezone', 'status')}
+LINE vapi_actions.py:340 confirm | data = {key: result[key] for key in ('id', 'service_id', 'start_at', 'end_at', 'timezone', 'status')}
+LINE vapi_actions.py:340 confirm | data = {key: result[key] for key in ('id', 'service_id', 'start_at', 'end_at', 'timezone', 'status')}
+LINE vapi_actions.py:340 confirm | data = {key: result[key] for key in ('id', 'service_id', 'start_at', 'end_at', 'timezone', 'status')}
+LINE vapi_actions.py:340 confirm | data = {key: result[key] for key in ('id', 'service_id', 'start_at', 'end_at', 'timezone', 'status')}
+LINE vapi_actions.py:340 confirm | data = {key: result[key] for key in ('id', 'service_id', 'start_at', 'end_at', 'timezone', 'status')}
+LINE vapi_actions.py:340 confirm | data = {key: result[key] for key in ('id', 'service_id', 'start_at', 'end_at', 'timezone', 'status')}
+LINE vapi_actions.py:341 confirm | data = json.loads(json.dumps(data, default=lambda x: x.isoformat()))
+LINE vapi_actions.py:342 confirm | outcome = {'create': 'appointment_booked', 'cancel': 'appointment_cancelled',
+LINE vapi_actions.py:343 confirm | 'reschedule': 'appointment_rescheduled'}[kind]
+LINE vapi_actions.py:342 confirm | outcome = {'create': 'appointment_booked', 'cancel': 'appointment_cancelled',
+LINE vapi_actions.py:343 confirm | 'reschedule': 'appointment_rescheduled'}[kind]
+LINE vapi_actions.py:342 confirm | outcome = {'create': 'appointment_booked', 'cancel': 'appointment_cancelled',
+LINE vapi_actions.py:344 confirm | result = {'success': True, 'status': 'completed', 'data': data}
+LINE vapi_actions.py:345 confirm | state.setdefault('completed', {})[token] = result
+LINE vapi_actions.py:346 confirm | state.pop('pending', None)
+LINE vapi_actions.py:347 confirm | self.save(cid, state, outcome)
+LINE vapi_actions.py:348 confirm | return result
+RETURN vapi_actions.py:348 confirm | {"success": true, "status": "completed", "data": {"id": "8dacc686abbb4b7da4a2ee3684eb1e3c", "service_id": "pt", "start_at": "2026-10-03T09:00:00+00:00", "end_at": "2026-10-03T09:30:00+00:00", "timezone": "UTC", "status": "booked"}}
+RETURN vapi_actions.py:225 execute | {"success": true, "status": "completed", "data": {"id": "8dacc686abbb4b7da4a2ee3684eb1e3c", "service_id": "pt", "start_at": "2026-10-03T09:00:00+00:00", "end_at": "2026-10-03T09:30:00+00:00", "timezone": "UTC", "status": "booked"}}
+RETURN vapi_actions.py:183 handle | {"success": true, "status": "completed", "data": {"id": "8dacc686abbb4b7da4a2ee3684eb1e3c", "service_id": "pt", "start_at": "2026-10-03T09:00:00+00:00", "end_at": "2026-10-03T09:30:00+00:00", "timezone": "UTC", "status": "booked"}}
+RETURN vapi_api.py:124 tool_results
+RESULT: {"success": true, "status": "completed", "data": {"id": "8dacc686abbb4b7da4a2ee3684eb1e3c", "service_id": "pt", "start_at": "2026-10-03T09:00:00+00:00", "end_at": "2026-10-03T09:30:00+00:00", "timezone": "UTC", "status": "booked"}}
+CALENDAR WRITES THIS CONFIRM: 1
+
+FINAL: one fake calendar event, one appointment, one completed operation; retry made no additional write.

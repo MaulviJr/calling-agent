@@ -1,0 +1,181 @@
+[
+  {
+    "turn": 1,
+    "user": "Hey. How are you?",
+    "before": "Hello! I am doing well, thanks for asking. I am an AI receptionist here to help with clinic questions, appointments, or a message for the team. What would you like help with?",
+    "after": "I'm ready to help, thanks for asking!",
+    "calls": 1,
+    "discourse": {
+      "topic": "",
+      "focused_entity_id": null,
+      "recent_source_ids": [],
+      "last_answer_mode": null,
+      "age": 1,
+      "interrupted": false
+    },
+    "diagnostic": "SEMANTIC_TURN call_id=6e57c60209294df6a997120667bf3044 turn_kind=conversation selected_source_ids= resolved_entity_id= answer_mode=wellbeing llm_calls=1 fallback_reason=none"
+  },
+  {
+    "turn": 2,
+    "user": "What exactly do you guys do there?",
+    "before": "I am an AI receptionist here to help with clinic questions, appointments, or a message for the team. What would you like help with?",
+    "after": "We offer Physiotherapy and Phyiotherapy of neck.",
+    "calls": 1,
+    "discourse": {
+      "topic": "services",
+      "focused_entity_id": null,
+      "recent_source_ids": [
+        "service:pt",
+        "service:neck"
+      ],
+      "last_answer_mode": "services_overview",
+      "age": 0,
+      "interrupted": false
+    },
+    "diagnostic": "SEMANTIC_TURN call_id=6e57c60209294df6a997120667bf3044 turn_kind=knowledge selected_source_ids=service:pt,service:neck resolved_entity_id= answer_mode=services_overview llm_calls=1 fallback_reason=none"
+  },
+  {
+    "turn": 3,
+    "user": "And who would actually treat me?",
+    "before": "We offer Physiotherapy appointments lasting 30 minutes. The listed price is 1500 USD. We offer Phyiotherapy of neck appointments lasting 90 minutes. The listed price is 1455.",
+    "after": "Our physicians are Abdul Hadi and ahmed. Our physiotherapists are Ayan Khan, Ali Raza, and Hamza Khan.",
+    "calls": 1,
+    "discourse": {
+      "topic": "staff",
+      "focused_entity_id": null,
+      "recent_source_ids": [
+        "staff:hadi",
+        "staff:ahmed",
+        "staff:ayan",
+        "staff:ali",
+        "staff:hamza"
+      ],
+      "last_answer_mode": "staff_list",
+      "age": 0,
+      "interrupted": false
+    },
+    "diagnostic": "SEMANTIC_TURN call_id=6e57c60209294df6a997120667bf3044 turn_kind=knowledge selected_source_ids=staff:hadi,staff:ahmed,staff:ayan,staff:ali,staff:hamza resolved_entity_id=hadi,ahmed,ayan,ali,hamza answer_mode=staff_list llm_calls=1 fallback_reason=none"
+  },
+  {
+    "turn": 4,
+    "user": "Do you have any doctors there?",
+    "before": "Our physicians are Abdul Hadi and ahmed.",
+    "after": "Our physicians are Abdul Hadi and ahmed.",
+    "calls": 1,
+    "discourse": {
+      "topic": "staff",
+      "focused_entity_id": null,
+      "recent_source_ids": [
+        "staff:hadi",
+        "staff:ahmed"
+      ],
+      "last_answer_mode": "staff_list",
+      "age": 0,
+      "interrupted": false
+    },
+    "diagnostic": "SEMANTIC_TURN call_id=6e57c60209294df6a997120667bf3044 turn_kind=knowledge selected_source_ids=staff:hadi,staff:ahmed resolved_entity_id=hadi,ahmed answer_mode=staff_list llm_calls=1 fallback_reason=none"
+  },
+  {
+    "turn": 5,
+    "user": "What about Abdul Hadhi? Is he a doctor?",
+    "before": "Our physicians are Abdul Hadi and ahmed.",
+    "after": "Abdul Hadi is listed as a physician.",
+    "calls": 1,
+    "discourse": {
+      "topic": "staff",
+      "focused_entity_id": "hadi",
+      "recent_source_ids": [
+        "staff:hadi"
+      ],
+      "last_answer_mode": "staff_role",
+      "age": 0,
+      "interrupted": false
+    },
+    "diagnostic": "SEMANTIC_TURN call_id=6e57c60209294df6a997120667bf3044 turn_kind=knowledge selected_source_ids=staff:hadi resolved_entity_id=hadi answer_mode=staff_role llm_calls=1 fallback_reason=none"
+  },
+  {
+    "turn": 6,
+    "user": "Okay. So he's a physiotherapist.",
+    "before": "Our physiotherapists are Ayan Khan, Ali Raza, and Hamza Khan.",
+    "after": "Abdul Hadi is listed as a physician.",
+    "calls": 1,
+    "discourse": {
+      "topic": "staff",
+      "focused_entity_id": "hadi",
+      "recent_source_ids": [
+        "staff:hadi"
+      ],
+      "last_answer_mode": "staff_role_correction",
+      "age": 0,
+      "interrupted": false
+    },
+    "diagnostic": "SEMANTIC_TURN call_id=6e57c60209294df6a997120667bf3044 turn_kind=knowledge selected_source_ids=staff:hadi resolved_entity_id=hadi answer_mode=staff_role_correction llm_calls=1 fallback_reason=none"
+  },
+  {
+    "turn": 7,
+    "user": "And who are the actual physician again?",
+    "before": "Our physicians are Abdul Hadi and ahmed.",
+    "after": "Our physicians are Abdul Hadi and ahmed.",
+    "calls": 1,
+    "discourse": {
+      "topic": "staff",
+      "focused_entity_id": "hadi",
+      "recent_source_ids": [
+        "staff:hadi",
+        "staff:ahmed"
+      ],
+      "last_answer_mode": "staff_list",
+      "age": 0,
+      "interrupted": false
+    },
+    "diagnostic": "SEMANTIC_TURN call_id=6e57c60209294df6a997120667bf3044 turn_kind=knowledge selected_source_ids=staff:hadi,staff:ahmed resolved_entity_id=hadi,ahmed answer_mode=staff_list llm_calls=1 fallback_reason=none"
+  },
+  {
+    "turn": 8,
+    "user": "Cool. Is the place wheelchair friendly?",
+    "before": "I am not able to answer that. Is there anything else I can help you with regarding our services or appointments?",
+    "after": "I don't have details about wheelchair accessibility. I can take a message for the team if you'd like.",
+    "calls": 1,
+    "discourse": {
+      "topic": "accessibility",
+      "focused_entity_id": null,
+      "recent_source_ids": [],
+      "last_answer_mode": "missing_information",
+      "age": 0,
+      "interrupted": false
+    },
+    "diagnostic": "SEMANTIC_TURN call_id=6e57c60209294df6a997120667bf3044 turn_kind=knowledge selected_source_ids= resolved_entity_id= answer_mode=missing_information llm_calls=1 fallback_reason=none"
+  },
+  {
+    "turn": 9,
+    "user": "What about parking?",
+    "before": "I do not have approved information about that. Would you like me to take a message?",
+    "after": "I don't have details about parking.",
+    "calls": 1,
+    "discourse": {
+      "topic": "parking",
+      "focused_entity_id": null,
+      "recent_source_ids": [],
+      "last_answer_mode": "missing_information",
+      "age": 0,
+      "interrupted": false
+    },
+    "diagnostic": "SEMANTIC_TURN call_id=6e57c60209294df6a997120667bf3044 turn_kind=knowledge selected_source_ids= resolved_entity_id= answer_mode=missing_information llm_calls=1 fallback_reason=none"
+  },
+  {
+    "turn": 10,
+    "user": "And if I just show up, is that okay?",
+    "before": "I can help with clinic questions, appointments, or take a message for the team. What would you like help with?",
+    "after": "I don't have details about whether you can visit without an appointment.",
+    "calls": 1,
+    "discourse": {
+      "topic": "walk_in",
+      "focused_entity_id": null,
+      "recent_source_ids": [],
+      "last_answer_mode": "missing_information",
+      "age": 0,
+      "interrupted": false
+    },
+    "diagnostic": "SEMANTIC_TURN call_id=6e57c60209294df6a997120667bf3044 turn_kind=knowledge selected_source_ids= resolved_entity_id= answer_mode=missing_information llm_calls=1 fallback_reason=none"
+  }
+]
