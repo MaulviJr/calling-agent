@@ -292,7 +292,7 @@ def test_action_configuration_exposes_nine_tools_and_confirmation_events():
     config = assistant_config({'VAPI_PUBLIC_BASE_URL': 'https://example.test',
         'VAPI_SERVER_CREDENTIAL_ID': 'credential', 'VAPI_ELEVENLABS_VOICE_ID': 'voice', 'VAPI_ACTIONS_ENABLED': 'true'})
     assert len(config['model']['tools']) == 9
-   assert config['serverMessages'] == ['status-update', 'transcript']
+    assert config['serverMessages'] == ['status-update', 'transcript']
     assert 'confirm_action' in config['model']['messages'][0]['content']
     for tool in config['model']['tools']:
         assert '"title"' not in json.dumps(tool['function']['parameters'])

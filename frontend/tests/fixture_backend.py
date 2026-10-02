@@ -11,7 +11,6 @@ import uvicorn
 from backend.app.api import create_app, passwords
 from backend.app.database import Base, database, Business, Admin, Call, TranscriptTurn, Message, Appointment
 from backend.app.business import BusinessSettings, Service, Hours
-from backend.app.agent import Decision
 from fastapi import WebSocket
 
 
@@ -58,11 +57,6 @@ def add_transport_probe(app):
         await ws.close()
 
 
-class OfflineLLM:
-    def decide(self, *args):
-        return Decision(action='unknown')
-
-
 def main():
     os.environ['APP_ORIGIN'] = 'http://localhost:8000'
     os.environ['COOKIE_SECURE'] = 'false'
@@ -95,7 +89,7 @@ def main():
                                end_at=datetime(2026, 10, 12, 10, 30, tzinfo=timezone.utc),
                                timezone='UTC', calendar_event_id='qa-event'))
         try:
-            app = create_app(sessions, calendar=OfflineCalendar(), llm=OfflineLLM(), voice_enabled=False)
+            app = create_app(sessions, calendar=OfflineCalendar(), voice_enabled=False)
             if '--transport-echo' in sys.argv:
                 add_transport_probe(app)
             uvicorn.run(app, host='127.0.0.1', port=8001)

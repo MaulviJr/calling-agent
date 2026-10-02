@@ -9,7 +9,7 @@ from collections import defaultdict, deque
 from datetime import timedelta
 from pathlib import Path
 from typing import Literal
-from fastapi import FastAPI, Depends, HTTPException, Request, Response, WebSocket
+from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import Field
@@ -18,9 +18,8 @@ from sqlalchemy import select, func
 from .business import StrictModel, BusinessSettings
 from .database import Business, Admin, LoginSession, Call, Appointment, Message, TranscriptTurn, Operation, record, now
 from .dates import aware
-from .agent import Receptionist, GeminiConversationPlanner, call_lock
-from .calendar import GoogleCalendar, UnconfiguredCalendar, CalendarUnavailable
-from .scheduling import Scheduling, Booking
+from .calendar import UnconfiguredCalendar, CalendarUnavailable
+from .scheduling import Scheduling
 
 log=logging.getLogger('ava')
 passwords=PasswordHash.recommended()
@@ -30,11 +29,6 @@ dummy_hash=passwords.hash('not-a-real-user-password')
 class Login(StrictModel):
     email: str = Field(max_length=254)
     password: str = Field(max_length=256)
-
-
-class TextTurn(StrictModel):
-    text: str = Field(min_length=1,max_length=3000)
-    key: str = Field(min_length=1,max_length=100)
 
 
 class MessageStatus(StrictModel):
@@ -47,24 +41,10 @@ class Mutation(StrictModel):
     start_at: str | None = None
 
 
-def create_app(sessions,calendar=None,llm=None,voice_enabled=True):
+def create_app(sessions,calendar=None,llm=None,voice_enabled=False,legacy_enabled=False):
     app=FastAPI(title='Ava',docs_url=None,redoc_url=None)
     scheduler=Scheduling(sessions,calendar or UnconfiguredCalendar())
-    class LazyLLM:
-        def __init__(self):
-            self.instance=None
-            self.lock=threading.Lock()
-
-        def provider(self):
-            with self.lock:
-                if self.instance is None:
-                    self.instance=GeminiConversationPlanner()
-            return self.instance
-
-        def decide(self,*args): return self.provider().decide(*args)
-        def summarize(self,*args): return self.provider().summarize(*args)
-    agent=Receptionist(sessions,scheduler,llm or LazyLLM())
-    app.state.agent=agent; app.state.scheduler=scheduler
+    app.state.scheduler=scheduler
     origin=os.getenv('APP_ORIGIN','http://localhost:8000').rstrip('/')
     secure=os.getenv('COOKIE_SECURE','false').lower()=='true'
     if not origin.startswith(('http://localhost:','http://127.0.0.1:')) and not secure:
@@ -235,28 +215,9 @@ def create_app(sessions,calendar=None,llm=None,voice_enabled=True):
             if not op: raise HTTPException(404,'Operation not found.')
         return scheduler.mutate(admin.business_id,op.key,op.kind,op.payload,True)
 
-    @app.post('/api/demo/calls')
-    def start_call(admin=Depends(current)): return {'id':agent.start(admin.business_id)}
-
-    @app.post('/api/demo/calls/{call_id}/turn')
-    def turn(call_id:str,data:TextTurn,admin=Depends(current)):
-        return {'reply':agent.respond(admin.business_id,call_id,data.text,data.key)}
-
-    @app.post('/api/demo/calls/{call_id}/end')
-    def end_call(call_id:str,admin=Depends(current)):
-        agent.end(admin.business_id,call_id); return {'ok':True}
-
-    @app.websocket('/api/voice')
-    async def voice(ws:WebSocket):
-        if not voice_enabled:
-            await ws.close(code=1008); return
-        if ws.headers.get('origin')!=origin:
-            await ws.close(code=1008); return
-        try: admin=authenticate(ws.cookies.get('ava_session'))
-        except HTTPException:
-            await ws.close(code=1008); return
-        from .legacy_voice_system.browser import browser_session
-        await browser_session(ws,agent,admin.business_id)
+    if legacy_enabled:
+        from legacy.app.routes import mount
+        mount(app, sessions, scheduler, current, authenticate, origin, llm, voice_enabled)
 
     dist=Path(__file__).resolve().parents[2]/'frontend'/'dist'
     if dist.exists():

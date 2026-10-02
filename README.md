@@ -1,55 +1,41 @@
-# Ava
+# Ava with Vapi
 
-A modular voice receptionist: FastAPI, PostgreSQL, Google Calendar and an
-authenticated Next.js App Router/TypeScript/Tailwind dashboard. The original learning scripts are
-preserved in `testing files/`. No Vapi or telephone provider is integrated.
+Vapi handles the live voice conversation. Python supplies trusted business facts,
+checks availability and owns appointment/message writes. The staff API and Next.js
+frontend use the shared database, calendar and scheduling layers.
 
-**Current checkpoint:** backend/dashboard implemented and tested offline.
-Live PostgreSQL, AI audio, Google Calendar and telephone acceptance remain
-outstanding. The complete production MVP is not yet verified.
+The old custom receptionist is isolated under [legacy/](legacy/README.md).
+It is optional; neither active backend factory imports it by default.
 
-Start with [SETUP.md](SETUP.md), especially **Test with your microphone**.
-Study [ARCHITECTURE.md](ARCHITECTURE.md) and [DATA_FLOW.md](DATA_FLOW.md).
-Verification and manual acceptance are in [TESTING.md](TESTING.md).
+## Active entry points
 
 ```powershell
-.\venv\Scripts\python.exe -m pytest -q
-cd frontend
-npm ci
-npm run build
-cd ..
-```
-
-For an isolated offline frontend preview, run this from the project root in one terminal:
-
-```powershell
-.\venv\Scripts\python.exe frontend/tests/fixture_backend.py
-```
-
-Then run `npm run dev` from `frontend/` in a second terminal. Open
-http://localhost:8000/login using `qa@example.test` / `frontend-qa-only-123`.
-This fixture uses temporary SQLite, an in-memory calendar and a stub text responder;
-it never reads `.env`, writes your real DB or calls speech providers. Voice is
-disabled. Never use the fixture credential as a deployment credential.
-The original `scripts.preview` is a legacy static preview, not the Next application.
-
-For the actual application, configure `.env`, migrate, bootstrap, and run:
-
-```powershell
+.\venv\Scripts\python.exe -m uvicorn backend.app.vapi_api:build_app --factory --host 127.0.0.1 --port 8002
 .\venv\Scripts\python.exe -m uvicorn backend.app.main:build_app --factory --host 127.0.0.1 --port 8001
 ```
 
-In another terminal, run `npm run dev` from `frontend/`, then visit
-http://localhost:8000. For production, use `npm run build` and `npm start`.
-The frontend gateway preserves the backend's existing cookie, Origin and
-WebSocket contracts. See [frontend refactor](docs/FRONTEND_REFACTOR.md).
+Run the Vapi webhook server on 8002 and the staff/dashboard API on 8001 in separate
+terminals. Keep the Vapi server reachable through a public HTTPS URL. The frontend
+continues to use its existing staff API gateway.
 
-Implemented: explicit appointment state, confirmation gates, real Google adapter,
-idempotent mutation recovery, calls/transcripts, messages/escalation, summaries,
-staff login, metrics, settings and local/provisional browser audio transports.
-One deployment serves one business and one capacity-one calendar. Multiple
-clinicians/calendars, public browser voice, live transfer and automatic recovery
-of calls left active after a crash are not implemented.
+## Code ownership
 
-See [telephony options](docs/TELEPHONY_OPTIONS.md). Provider implementation is
-paused at the user's explicit request, pending a provider decision.
+| Location | Purpose |
+| --- | --- |
+| backend/app/vapi_*.py | Vapi tools, webhook authentication, confirmation, configuration and diagnostics |
+| backend/app/api.py and main.py | Staff login, settings, appointments, messages, call records and dashboard data |
+| backend/app/database.py, business.py, scheduling.py, calendar.py, dates.py, lookup.py | Shared backend services; keep these when removing legacy |
+| tests/ and root conftest.py | Active backend tests and isolated fixtures |
+| scripts/ | Active Vapi configuration and dry-run utilities |
+| legacy/ | Archived custom agent, voice, demo routes, scripts, tests, dependencies and historical docs |
+
+See [setup](SETUP.md), [testing](TESTING.md), [action tools](docs/VAPI_ACTION_TOOLS.md)
+and [diagnostic logs](docs/VAPI_DEBUG_LOGS.md).
+
+Default tests exclude legacy. The normal staff API does not expose the old custom
+text demo or browser voice endpoints. Existing frontend controls for those old
+features require the optional legacy factory; frontend Vapi integration is separate.
+
+Current calendar configuration belongs to one business. Multi-business calendar
+connections, full Vapi transcript reconciliation and production hosting still need
+separate implementation. Passing offline tests does not establish live provider quality.

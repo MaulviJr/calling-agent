@@ -256,7 +256,7 @@ from sqlalchemy.orm import sessionmaker
 from backend.app.vapi_api import create_app, WebhookSettings
 create_app(sessionmaker(create_engine('sqlite://')), WebhookSettings(
     token='test-only-webhook-token-with-32-characters', assistant_business_map={'a':'b'}))
-for prefix in ('backend.app.agent', 'backend.app.conversation', 'backend.app.semantic',
+for prefix in ('legacy', 'backend.app.agent', 'backend.app.conversation', 'backend.app.semantic',
                'backend.app.voice', 'backend.app.scheduling', 'backend.app.calendar',
                'deepgram', 'elevenlabs', 'google.genai'):
     assert not any(name == prefix or name.startswith(prefix + '.') for name in sys.modules), prefix
