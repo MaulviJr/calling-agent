@@ -255,7 +255,7 @@ def create_app(sessions,calendar=None,llm=None,voice_enabled=True):
         try: admin=authenticate(ws.cookies.get('ava_session'))
         except HTTPException:
             await ws.close(code=1008); return
-        from .voice.browser import browser_session
+        from .legacy_voice_system.browser import browser_session
         await browser_session(ws,agent,admin.business_id)
 
     dist=Path(__file__).resolve().parents[2]/'frontend'/'dist'

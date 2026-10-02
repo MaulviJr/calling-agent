@@ -1,10 +1,12 @@
 """Small CalendarProvider boundary. Google is the only production implementation."""
 import os
+import time as clock_time
 from typing import Protocol
 from urllib.parse import quote
 from datetime import datetime, timezone, time
 from google.oauth2 import service_account
 from google.auth.transport.requests import AuthorizedSession
+from .vapi_trace import emit
 
 
 class CalendarUnavailable(RuntimeError):
@@ -33,10 +35,19 @@ class GoogleCalendar:
         self.events = '/calendars/' + quote(self.calendar_id, safe='') + '/events'
 
     def _request(self, method, path, **kwargs):
+        started = clock_time.monotonic()
+        resource = 'freeBusy' if path == '/freeBusy' else 'events'
+        payload = dict(kwargs.get('json', {}))
+        if resource == 'freeBusy':
+            payload.pop('items', None)
+        emit('google.request', method=method, resource=resource, payload=payload)
         try:
             response = self.http.request(method, self.base+path, timeout=15, **kwargs)
         except Exception:
+            emit('google.transport_failed', method=method, resource=resource)
             raise CalendarUnavailable('Calendar request failed.') from None
+        emit('google.response', method=method, resource=resource, http_status=response.status_code,
+             latency_ms=int((clock_time.monotonic()-started)*1000))
         if response.status_code in (404,410): return None
         if response.status_code == 409: raise CalendarUnavailable('Calendar event conflict; reconcile first.')
         if not response.ok: raise CalendarUnavailable('Calendar request rejected.')

@@ -1,5 +1,5 @@
 import pytest
-from backend.app.voice.pacing import PcmPacer
+from backend.app.legacy_voice_system.pacing import PcmPacer
 
 
 def test_send_overhead_is_included_in_frame_duration():

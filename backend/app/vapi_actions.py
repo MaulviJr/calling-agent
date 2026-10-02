@@ -15,6 +15,7 @@ from sqlalchemy import select, text
 from .business import BusinessSettings, StrictModel
 from .database import Appointment, Business, Call, Message, Operation, now, uid
 from .dates import aware
+from .vapi_trace import emit
 
 _locks = [threading.RLock() for _ in range(64)]
 log = logging.getLogger('ava.vapi')
@@ -105,18 +106,6 @@ def affirmative(value):
     }
 
 
-def spoken_form(value):
-    """Compare equivalent speech formatting, without changing action facts."""
-    value = value.casefold()
-    # Vapi voice formatting turns 09:00 AM into 9 AM and spaces phone digits.
-    value = re.sub(r'\b(\d{1,2})(?::00)?\s*(am|pm)\b',
-                   lambda m: str(int(m[1])) + m[2], value)
-    value = re.sub(r'(?<!\w)\d(?:[ \t]+\d)+(?!\w)',
-                   lambda m: re.sub(r'\s', '', m[0]), value)
-    value = re.sub(r'\b0([1-9])\b', r'\1', value)
-    return normalize(value)
-
-
 def fail(code, status='rejected'):
     return {'success': False, 'status': status, 'code': code}
 
@@ -182,10 +171,15 @@ class Actions:
         digest = hashlib.sha256(json.dumps(arguments, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         with locked(self.sessions, bid, external_id):
             cid, state, settings, status = self.load(bid, external_id)
+            emit('action.state', internal_call_id=cid, call_status=status,
+                 pending_token=(state.get('pending') or {}).get('token'),
+                 pending_kind=(state.get('pending') or {}).get('kind'),
+                 affirmed_ms=(state.get('pending') or {}).get('affirmed_ms'))
             if status != 'active':
                 return fail('call_ended')
             receipts = state.setdefault('receipts', {})
             if tool_id in receipts:
+                emit('action.receipt_replay')
                 previous = receipts[tool_id]
                 if previous['name'] != name or previous['digest'] != digest:
                     return fail('tool_id_reused')
@@ -204,6 +198,9 @@ class Actions:
                 args = ACTION_SCHEMAS[name].model_validate(arguments)
                 result = self.execute(bid, cid, state, settings, name, args)
             except Exception as exc:
+                from pydantic import ValidationError
+                errors = [{'field': list(e['loc']), 'type': e['type']} for e in exc.errors()] if isinstance(exc, ValidationError) else []
+                emit('action.exception', exception_type=type(exc).__name__, validation_errors=errors)
                 from .calendar import CalendarUnavailable
                 if isinstance(exc, CalendarUnavailable):
                     result = fail('calendar_unavailable_or_needs_review', 'unavailable')
@@ -243,6 +240,8 @@ class Actions:
             if args.earliest and args.latest and args.earliest > args.latest:
                 return fail('invalid_time_window')
             slots = scheduler.slots(bid, args.service_id, args.date, args.earliest, args.latest, exclude=exclude)
+            emit('availability.result', service_id=args.service_id, date=args.date,
+                 timezone=settings.timezone, slots=slots, reservation_created=False)
             state['offered'] = {'service_id': args.service_id, 'slots': slots,
                                 'fingerprint': fingerprint(settings)}
             return {'success': True, 'status': 'available' if slots else 'unavailable',
@@ -271,48 +270,39 @@ class Actions:
                 if settings.require_email and not booking.caller_email:
                     return fail('email_required')
                 payload = booking.model_dump(mode='json')
-            service = next(s.name for s in settings.services if s.id == service_id)
-            when = args.start_at.astimezone(ZoneInfo(settings.timezone)).strftime('%A %B %d at %I:%M %p')
-            readback = (f'Please confirm: {"book" if kind == "create" else "reschedule"} {service} '
-                        f'for {when} {settings.timezone}' +
-                        (f', for {args.caller_name}, phone {args.caller_phone}' +
-                         (f', email {args.caller_email}.' if args.caller_email else '.') if kind == 'create'
-                         else f', appointment reference {row.id}.') + ' Shall I proceed?')
-        elif kind == 'cancel':
-            readback = (f'Please confirm: cancel appointment reference {row.id} on '
-                        f'{aware(row.start_at).astimezone(ZoneInfo(settings.timezone)):%A %B %d at %I:%M %p} '
-                        f'{settings.timezone}. Shall I proceed?')
-        else:
-            # Data minimization matches the existing message path without
-            # importing the custom receptionist.
+        elif kind == 'message':
             payload['content'] = re.sub(r'(?<!\d)(?:\d[ -]?){13,19}(?!\d)', '[number omitted]', args.content)
-            readback = (f'Please confirm this message: {payload["content"]}. '
-                        f'Name: {args.caller_name}, phone: {args.caller_phone}. Shall I proceed?')
         pending = state.get('pending')
         if not pending or pending['kind'] != kind or pending['payload'] != payload:
             pending = {'token': uid(), 'kind': kind, 'payload': payload,
                        'created_ms': int(time.time() * 1000), 'fingerprint': fingerprint(settings),
-                       'readback': readback, 'ready_ms': None, 'affirmed_ms': None}
+                       'affirmed_ms': None}
             state['pending'] = pending
         return {'success': True, 'status': 'confirmation_required',
-                'data': {'action_token': pending['token'], 'confirmation_text': readback,
+                'data': {'action_token': pending['token'], 'confirmation_prompt': 'Shall I proceed?',
                          'committed': False}}
 
     def confirm(self, bid, cid, state, settings, token):
+        emit('confirmation.request', action_token=token)
         completed = state.get('completed', {})
         if token in completed:
+            emit('confirmation.completed_replay')
             return completed[token]
         pending = state.get('pending')
         if not pending or pending['token'] != token:
+            emit('confirmation.rejected', reason='pending_missing' if not pending else 'token_mismatch')
             return fail('action_expired')
         if pending['fingerprint'] != fingerprint(settings) or int(time.time() * 1000) - pending['created_ms'] > 600000:
+            emit('confirmation.rejected', reason='settings_changed' if pending['fingerprint'] != fingerprint(settings) else 'ten_minute_expiry')
             state.pop('pending', None)
             return fail('action_expired')
-        if not pending.get('ready_ms') or not pending.get('affirmed_ms'):
-            reason = pending.get('confirmation_reason', 'readback_or_agreement_missing')
+        if not pending.get('affirmed_ms'):
+            emit('confirmation.rejected', reason='caller_agreement_missing')
+            reason = pending.get('confirmation_reason', 'caller_agreement_missing')
             log.info('VAPI_CONFIRMATION_BLOCKED call_id=%s reason=%s', cid, reason)
             return {**fail('confirmation_not_verified'), 'reason': reason}
         payload, kind = pending['payload'], pending['kind']
+        emit('confirmation.authorized', kind=kind, payload=payload, affirmed_ms=pending['affirmed_ms'])
         # A calendar write may have committed before the call receipt did.
         # Returning the durable result must not re-run ownership against an
         # appointment that this very operation already cancelled.
@@ -342,6 +332,7 @@ class Actions:
             outcome = {'create': 'appointment_booked', 'cancel': 'appointment_cancelled',
                        'reschedule': 'appointment_rescheduled'}[kind]
         result = {'success': True, 'status': 'completed', 'data': data}
+        emit('action.completed', kind=kind, result=result)
         state.setdefault('completed', {})[token] = result
         state.pop('pending', None)
         self.save(cid, state, outcome)
@@ -352,7 +343,7 @@ class Actions:
         if kind == 'transcript[transcriptType="final"]':
             kind = 'transcript'
             message = {**message, 'transcriptType': 'final'}
-        if kind not in ('assistant.speechStarted', 'speech-update', 'user-interrupted', 'transcript', 'status-update'):
+        if kind not in ('transcript', 'status-update'):
             return False
         stamp = message.get('timestamp')
         if isinstance(stamp, bool) or not isinstance(stamp, (int, float)) or stamp <= 0:
@@ -371,57 +362,21 @@ class Actions:
             pending = state.get('pending')
             if status != 'active' or not pending or stamp <= pending['created_ms']:
                 return False
-            if kind == 'assistant.speechStarted':
-                spoken = message.get('text', '')
-                turn = message.get('turn')
-                if isinstance(turn, int) and not isinstance(turn, bool) and isinstance(spoken, str):
-                    if spoken_form(pending['readback']) in spoken_form(spoken):
-                        if pending.get('turn') is not None and pending['turn'] != turn:
-                            for key in ('speech_ms', 'ready_ms', 'affirmed_ms'):
-                                pending.pop(key, None)
-                        pending['turn'] = turn
-                        pending['speech_ms'] = min(stamp, pending.get('speech_ms', stamp))
-            elif kind == 'speech-update' and message.get('role') == 'assistant' and message.get('status') == 'stopped':
-                turn = message.get('turn')
-                if isinstance(turn, int) and not isinstance(turn, bool):
-                    stops = pending.setdefault('stops', {})
-                    if len(stops) < 100 or str(turn) in stops:
-                        stops[str(turn)] = max(stamp, stops.get(str(turn), 0))
-            elif kind == 'user-interrupted':
-                # Retain the draft. Only interruptions inside its read-back
-                # interval invalidate evidence; unrelated speech is harmless.
-                interruptions = pending.setdefault('interruptions', [])
-                if stamp not in interruptions and len(interruptions) < 100:
-                    interruptions.append(stamp)
-            elif kind == 'transcript' and message.get('role') == 'user' and message.get('transcriptType') == 'final':
-                if stamp > state.get('last_user_ms', 0):
-                    state['last_user_ms'] = stamp
-                    if affirmative(message.get('transcript', '')):
-                        # Speech webhooks can arrive after the user's transcript.
-                        # Preserve the candidate; authorize only by event order.
-                        pending['agreement_ms'] = stamp
-                    else:
-                        # Questions/corrections revoke consent, not the draft.
-                        # A later yes requires a new complete read-back.
-                        pending['review_after_ms'] = stamp
-                        pending.pop('agreement_ms', None)
-            started = pending.get('speech_ms')
-            stopped = pending.get('stops', {}).get(str(pending.get('turn')))
-            pending.pop('ready_ms', None)
-            if not started or not stopped or stopped < started:
-                reason = 'readback_not_complete'
-            elif started <= pending.get('review_after_ms', 0):
-                reason = 'fresh_readback_required'
-            elif any(started <= interrupted <= stopped for interrupted in pending.get('interruptions', [])):
-                reason = 'readback_interrupted'
-            else:
-                pending['ready_ms'] = stopped
-                reason = 'caller_agreement_missing'
-            if pending.get('ready_ms') and pending.get('agreement_ms', 0) > pending['ready_ms']:
-                pending['affirmed_ms'] = pending['agreement_ms']
+            if kind != 'transcript' or message.get('role') != 'user' or message.get('transcriptType') != 'final':
+                return False
+            if stamp <= state.get('last_user_ms', 0):
+                return False
+            state['last_user_ms'] = stamp
+            if affirmative(message.get('transcript', '')):
+                pending['affirmed_ms'] = stamp
                 reason = 'verified'
             else:
+                # A correction, question or conditional response revokes consent.
+                # Keep the draft; changed details require a new preparation.
                 pending.pop('affirmed_ms', None)
+                reason = 'caller_agreement_missing'
+            emit('confirmation.evidence', event_timestamp=stamp, accepted=reason == 'verified',
+                 action_token=pending['token'], reason=reason)
             if reason != pending.get('confirmation_reason'):
                 log.info('VAPI_CONFIRMATION_STATE call_id=%s reason=%s', external_id, reason)
             pending['confirmation_reason'] = reason

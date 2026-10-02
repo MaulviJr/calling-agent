@@ -1,6 +1,6 @@
 import threading
 
-from backend.app.voice.session import VoiceSession
+from backend.app.legacy_voice_system.session import VoiceSession
 from backend.app.lookup import appointment_lookup
 
 

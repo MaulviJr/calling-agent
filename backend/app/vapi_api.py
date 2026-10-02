@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 from .business import StrictModel
 from .database import database
 from .vapi_tools import TOOLS, execute_tool
+from .vapi_trace import emit, scope
 
 log = logging.getLogger('ava.vapi')
 MAX_BODY_BYTES = 262144
@@ -105,16 +106,20 @@ def tool_results(sessions, business_id, call_id, calls, actions=None):
                     arguments = json.loads(arguments)
                 if not isinstance(arguments, dict):
                     raise ValueError
-                if name in TOOLS:
-                    result = execute_tool(sessions, business_id, name, arguments)
-                else:
-                    result = actions.handle(business_id, call_id, tool_id, name, arguments)
+                with scope(call_id=call_id, business_id=business_id, tool_call_id=tool_id, tool=safe_name):
+                    emit('tool.request', arguments=arguments)
+                    if name in TOOLS:
+                        result = execute_tool(sessions, business_id, name, arguments)
+                    else:
+                        result = actions.handle(business_id, call_id, tool_id, name, arguments)
         except (ValueError, ValidationError):
             # Pydantic traces can include inputs; never return/log them.
             result = {'success': False, 'status': 'rejected', 'code': 'invalid_arguments_or_settings'}
         except Exception:
             result = {'success': False, 'status': 'unavailable', 'code': 'information_unavailable'}
         success = result['success']
+        with scope(call_id=call_id, business_id=business_id, tool_call_id=tool_id, tool=safe_name):
+            emit('tool.response', latency_ms=int((time.monotonic() - started) * 1000), result=result)
         log.info('%s call_id=%s tool=%s latency_ms=%d success=%s',
                  'VAPI_TOOL_COMPLETED' if success else 'VAPI_TOOL_FAILED',
                  call_id, safe_name, (time.monotonic() - started) * 1000, success)
@@ -171,7 +176,11 @@ def create_app(sessions, settings, actions=None):
             log.info('VAPI_CALL_ENDED call_id=%s', call_id)
         persisted = False
         if actions is not None:
-            persisted = await run_in_threadpool(actions.event, business_id, call_id, message)
+            with scope(call_id=call_id, business_id=business_id):
+                emit('event.received', event_type=kind, event_timestamp=message.get('timestamp'),
+                     role=message.get('role'), transcript_type=message.get('transcriptType'), status=message.get('status'))
+                persisted = await run_in_threadpool(actions.event, business_id, call_id, message)
+                emit('event.processed', event_type=kind, persisted=persisted)
         return {'accepted': True, 'persisted': persisted}
 
     return app
@@ -183,6 +192,8 @@ def build_app():
     settings = WebhookSettings.from_env()
     _, sessions = database()
     logging.basicConfig(level=logging.INFO)
+    from .vapi_trace import configure
+    configure()
     actions = None
     if os.getenv('VAPI_ACTIONS_ENABLED', 'false').lower() == 'true':
         from .vapi_actions import Actions

@@ -1,7 +1,7 @@
 import threading
 import time
 import unittest
-from backend.app.voice.session import VoiceSession
+from backend.app.legacy_voice_system.session import VoiceSession
 
 
 class VoiceTests(unittest.TestCase):

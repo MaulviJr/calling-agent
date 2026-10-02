@@ -118,9 +118,6 @@ def main():
                 event(scenario, 'user-interrupted', stamp)
                 emit('Interruption recorded; draft retained, confirmation still required.')
             elif scenario == 'valid_confirmation':
-                speech = prepared['data']['confirmation_text'].replace('09:00 AM', '9 AM')
-                event(scenario, 'assistant.speechStarted', stamp, turn=7, text=speech)
-                event(scenario, 'speech-update', stamp + 100, turn=7, role='assistant', status='stopped')
                 event(scenario, 'transcript', stamp + 200, role='user', transcriptType='final', transcript='Yes, please.')
             state = actions.load(bid, scenario)[1].get('pending', {})
             emit('BEFORE CONFIRM: ' + json.dumps({k: state.get(k) for k in

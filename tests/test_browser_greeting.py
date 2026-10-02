@@ -4,7 +4,7 @@ from contextlib import contextmanager
 
 from fastapi import WebSocketDisconnect
 
-from backend.app.voice import browser
+from backend.app.legacy_voice_system import browser
 
 
 def test_browser_sends_greeting_audio_once_without_input(system, monkeypatch):

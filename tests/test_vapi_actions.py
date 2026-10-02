@@ -56,14 +56,11 @@ def pending_state(system, call='call-a'):
 
 
 def consent(system, preparation, call='call-a', turn=1):
-    client = system[0]
     pending = pending_state(system, call)
     state = system[1].load(system[3], call)[1]
     stamp = max(pending['created_ms'], state.get('last_user_ms', 0)) + 100
-    event(client, 'assistant.speechStarted', stamp, call=call,
-          turn=turn, text=preparation['data']['confirmation_text'])
-    event(client, 'speech-update', stamp + 100, call=call, turn=turn, role='assistant', status='stopped')
-    event(client, 'transcript', stamp + 200, call=call, role='user', transcriptType='final', transcript='Yes, please.')
+    event(system[0], 'transcript', stamp, call=call,
+          role='user', transcriptType='final', transcript='Yes, please.')
 
 
 def checked_booking(system, *, call='call-a', start=None, name='Caller', key=None):
@@ -120,82 +117,51 @@ def test_changed_conditional_or_ambiguous_agreement_invalidates_action(action_sy
     preparation, _ = checked_booking(action_system)
     pending = pending_state(action_system)
     stamp = pending['created_ms'] + 100
-    event(client, 'assistant.speechStarted', stamp, turn=1, text=preparation['data']['confirmation_text'])
-    event(client, 'speech-update', stamp + 100, turn=1, role='assistant', status='stopped')
     event(client, 'transcript', stamp + 200, role='user', transcriptType='final', transcript=utterance)
     assert invoke(client, 'confirm_action', {'action_token': preparation['data']['action_token']})['code'] == 'confirmation_not_verified'
     assert not action_system[4].events
 
 
-def test_interrupted_readback_requires_new_confirmation(action_system):
-    client = action_system[0]
-    preparation, payload = checked_booking(action_system)
-    stamp = pending_state(action_system)['created_ms'] + 100
-    event(client, 'assistant.speechStarted', stamp, turn=2, text=preparation['data']['confirmation_text'])
-    event(client, 'user-interrupted', stamp + 100)
-    event(client, 'speech-update', stamp + 200, turn=2, role='assistant', status='stopped')
-    event(client, 'transcript', stamp + 300, role='user', transcriptType='final', transcript='yes')
-    token = preparation['data']['action_token']
-    assert invoke(client, 'confirm_action', {'action_token': token})['code'] == 'confirmation_not_verified'
-    updated = invoke(client, 'create_appointment', payload)
-    consent(action_system, updated, turn=3)
-    assert invoke(client, 'confirm_action', {'action_token': updated['data']['action_token']})['status'] == 'completed'
-
-
-def test_unrelated_or_incomplete_speech_cannot_unlock_confirmation(action_system):
-    client = action_system[0]
+def test_yes_alone_confirms_without_speech_events(action_system):
     preparation, _ = checked_booking(action_system)
-    stamp = pending_state(action_system)['created_ms'] + 100
-    event(client, 'assistant.speechStarted', stamp, turn=1, text='Would you like that?')
-    event(client, 'speech-update', stamp + 100, turn=1, role='assistant', status='stopped')
-    assert invoke(client, 'confirm_action', {'action_token': preparation['data']['action_token']})['code'] == 'confirmation_not_verified'
-    assert not action_system[4].events
-
-
-@pytest.mark.parametrize('interrupt_position', ['before', 'after'])
-def test_unrelated_interruption_preserves_booking_confirmation(action_system, interrupt_position):
-    client = action_system[0]
-    preparation, _ = checked_booking(action_system)
-    stamp = pending_state(action_system)['created_ms'] + 100
-    if interrupt_position == 'before':
-        event(client, 'user-interrupted', stamp - 50)
-    event(client, 'assistant.speechStarted', stamp, turn=5, text=preparation['data']['confirmation_text'])
-    event(client, 'speech-update', stamp + 100, turn=5, role='assistant', status='stopped')
-    event(client, 'transcript', stamp + 200, role='user', transcriptType='final', transcript='Yes, please.')
-    if interrupt_position == 'after':
-        # Interrupting a filler utterance after the read-back is harmless.
-        event(client, 'user-interrupted', stamp + 250)
-    assert invoke(client, 'confirm_action', {'action_token': preparation['data']['action_token']})['status'] == 'completed'
-
-
-def test_question_retains_draft_but_requires_new_readback(action_system):
-    client = action_system[0]
-    preparation, _ = checked_booking(action_system)
-    stamp = pending_state(action_system)['created_ms'] + 100
-    event(client, 'assistant.speechStarted', stamp, turn=1, text=preparation['data']['confirmation_text'])
-    event(client, 'speech-update', stamp + 100, turn=1, role='assistant', status='stopped')
-    event(client, 'transcript', stamp + 200, role='user', transcriptType='final', transcript='What was the time again?')
-    assert pending_state(action_system)['token'] == preparation['data']['action_token']
-    event(client, 'transcript', stamp + 300, role='user', transcriptType='final', transcript='Yes')
-    blocked = invoke(client, 'confirm_action', {'action_token': preparation['data']['action_token']})
-    assert blocked['code'] == 'confirmation_not_verified' and blocked['reason'] == 'fresh_readback_required'
-    assert not action_system[4].events
-    event(client, 'assistant.speechStarted', stamp + 400, turn=2, text=preparation['data']['confirmation_text'])
-    event(client, 'speech-update', stamp + 500, turn=2, role='assistant', status='stopped')
-    event(client, 'transcript', stamp + 600, role='user', transcriptType='final', transcript='Yep')
-    assert invoke(client, 'confirm_action', {'action_token': preparation['data']['action_token']})['status'] == 'completed'
-
-
-def test_delayed_readback_interruption_revokes_evidence_not_draft(action_system):
-    client = action_system[0]
-    preparation, _ = checked_booking(action_system)
-    stamp = pending_state(action_system)['created_ms'] + 100
     consent(action_system, preparation)
-    event(client, 'user-interrupted', stamp + 50)
-    blocked = invoke(client, 'confirm_action', {'action_token': preparation['data']['action_token']})
-    assert blocked['code'] == 'confirmation_not_verified' and blocked['reason'] == 'readback_interrupted'
-    assert pending_state(action_system)['token'] == preparation['data']['action_token']
+    result = invoke(action_system[0], 'confirm_action', {'action_token': preparation['data']['action_token']})
+    assert result['status'] == 'completed'
+    assert len(action_system[4].events) == 1
+
+
+def test_interruption_does_not_block_affirmation(action_system):
+    preparation, _ = checked_booking(action_system)
+    event(action_system[0], 'user-interrupted', pending_state(action_system)['created_ms'] + 10)
+    consent(action_system, preparation)
+    assert invoke(action_system[0], 'confirm_action', {'action_token': preparation['data']['action_token']})['status'] == 'completed'
+
+
+def test_latest_correction_revokes_previous_affirmation(action_system):
+    preparation, _ = checked_booking(action_system)
+    consent(action_system, preparation)
+    stamp = pending_state(action_system)['affirmed_ms'] + 100
+    event(action_system[0], 'transcript', stamp, role='user', transcriptType='final', transcript='Yes but make it 10 instead')
+    assert invoke(action_system[0], 'confirm_action', {'action_token': preparation['data']['action_token']})['code'] == 'confirmation_not_verified'
     assert not action_system[4].events
+
+
+def test_old_partial_and_assistant_transcripts_cannot_confirm(action_system):
+    preparation, _ = checked_booking(action_system)
+    stamp = pending_state(action_system)['created_ms']
+    event(action_system[0], 'transcript', stamp - 1, role='user', transcriptType='final', transcript='Yes')
+    event(action_system[0], 'transcript', stamp + 100, role='user', transcriptType='partial', transcript='Yes')
+    event(action_system[0], 'transcript', stamp + 200, role='assistant', transcriptType='final', transcript='Yes')
+    assert invoke(action_system[0], 'confirm_action', {'action_token': preparation['data']['action_token']})['code'] == 'confirmation_not_verified'
+    assert not action_system[4].events
+
+
+def test_final_only_subscription_and_outdated_transcript(action_system):
+    preparation, _ = checked_booking(action_system)
+    stamp = pending_state(action_system)['created_ms'] + 100
+    event(action_system[0], 'transcript[transcriptType="final"]', stamp + 100, role='user', transcript='Yes')
+    event(action_system[0], 'transcript', stamp, role='user', transcriptType='final', transcript='No')
+    assert invoke(action_system[0], 'confirm_action', {'action_token': preparation['data']['action_token']})['status'] == 'completed'
 
 
 def test_settings_changes_expire_confirmation(action_system):
@@ -207,51 +173,6 @@ def test_settings_changes_expire_confirmation(action_system):
         row.settings = {**row.settings, 'buffer_minutes': 10}
     assert invoke(client, 'confirm_action', {'action_token': preparation['data']['action_token']})['code'] == 'action_expired'
     assert not calendar.events
-
-
-@pytest.mark.parametrize('delivery', ['normal', 'transcript_first', 'stop_first'])
-def test_vapi_speech_formatting_and_reordered_webhooks(action_system, delivery):
-    client = action_system[0]
-    preparation, payload = checked_booking(action_system)
-    expected = preparation['data']['confirmation_text']
-    spoken = expected.replace('October 02', 'October 2').replace('09:00 AM', '9 AM')
-    spoken = spoken.replace(payload['caller_phone'], ' '.join(payload['caller_phone']))
-    stamp = pending_state(action_system)['created_ms'] + 100
-    events = {
-        'speech': ('assistant.speechStarted', stamp, {'turn': 7, 'text': spoken}),
-        'stop': ('speech-update', stamp + 100, {'turn': 7, 'role': 'assistant', 'status': 'stopped'}),
-        'yes': ('transcript', stamp + 200, {'role': 'user', 'transcriptType': 'final', 'transcript': 'Yes. I confirm it.'}),
-    }
-    order = {'normal': ['speech', 'stop', 'yes'], 'transcript_first': ['yes', 'stop', 'speech'],
-             'stop_first': ['stop', 'speech', 'yes']}[delivery]
-    for item in order:
-        kind, timestamp, fields = events[item]
-        event(client, kind, timestamp, **fields)
-    assert invoke(client, 'confirm_action', {'action_token': preparation['data']['action_token']})['status'] == 'completed'
-    assert len(action_system[4].events) == 1
-
-
-def test_early_yes_does_not_expire_token_or_authorize_it(action_system):
-    client = action_system[0]
-    preparation, _ = checked_booking(action_system)
-    stamp = pending_state(action_system)['created_ms'] + 100
-    event(client, 'transcript', stamp, role='user', transcriptType='final', transcript='Yes')
-    event(client, 'assistant.speechStarted', stamp + 100, turn=1, text=preparation['data']['confirmation_text'])
-    event(client, 'speech-update', stamp + 200, turn=1, role='assistant', status='stopped')
-    assert invoke(client, 'confirm_action', {'action_token': preparation['data']['action_token']})['code'] == 'confirmation_not_verified'
-    assert not action_system[4].events
-
-
-def test_changed_spoken_time_cannot_authorize_booking(action_system):
-    client = action_system[0]
-    preparation, _ = checked_booking(action_system)
-    stamp = pending_state(action_system)['created_ms'] + 100
-    wrong = preparation['data']['confirmation_text'].replace('09:00 AM', '10 AM')
-    event(client, 'assistant.speechStarted', stamp, turn=1, text=wrong)
-    event(client, 'speech-update', stamp + 100, turn=1, role='assistant', status='stopped')
-    event(client, 'transcript', stamp + 200, role='user', transcriptType='final', transcript='Yes')
-    assert invoke(client, 'confirm_action', {'action_token': preparation['data']['action_token']})['code'] == 'confirmation_not_verified'
-    assert not action_system[4].events
 
 
 def test_reference_phone_and_tenant_verification(action_system):
@@ -371,9 +292,31 @@ def test_action_configuration_exposes_nine_tools_and_confirmation_events():
     config = assistant_config({'VAPI_PUBLIC_BASE_URL': 'https://example.test',
         'VAPI_SERVER_CREDENTIAL_ID': 'credential', 'VAPI_ELEVENLABS_VOICE_ID': 'voice', 'VAPI_ACTIONS_ENABLED': 'true'})
     assert len(config['model']['tools']) == 9
-    assert 'user-interrupted' in config['serverMessages'] and 'assistant.speechStarted' in config['serverMessages']
+   assert config['serverMessages'] == ['status-update', 'transcript']
     assert 'confirm_action' in config['model']['messages'][0]['content']
     for tool in config['model']['tools']:
         assert '"title"' not in json.dumps(tool['function']['parameters'])
     availability = next(tool for tool in config['model']['tools'] if tool['function']['name'] == 'check_availability')
     assert availability['function']['parameters']['properties']['earliest']['type'] == ['string', 'null']
+
+
+def test_booking_trace_shows_data_flow_and_validation_without_private_inputs(action_system, monkeypatch, caplog):
+    import logging
+    monkeypatch.setenv('VAPI_TRACE_ENABLED', 'true')
+    caplog.set_level(logging.INFO, logger='ava.vapi.trace')
+    preparation, payload = checked_booking(action_system)
+    invalid = invoke(action_system[0], 'create_appointment', {**payload, 'caller_phone': '03009'})
+    assert not invalid['success']
+    # Changed invalid details invalidate the earlier draft. Prepare fresh details.
+    preparation = invoke(action_system[0], 'create_appointment', payload)
+    consent(action_system, preparation)
+    assert invoke(action_system[0], 'confirm_action', {'action_token': preparation['data']['action_token']})['status'] == 'completed'
+    entries = [json.loads(r.message) for r in caplog.records if r.name == 'ava.vapi.trace']
+    stages = {e['stage'] for e in entries}
+    assert {'tool.request', 'tool.response', 'availability.rules', 'availability.busy_intervals',
+            'availability.result', 'action.exception', 'confirmation.authorized',
+            'calendar.operation_intent', 'calendar.operation_completed', 'action.completed'} <= stages
+    assert all(e['call_id'] == 'call-a' for e in entries)
+    errors = next(e for e in entries if e['stage'] == 'action.exception')
+    assert errors['validation_errors'][0]['field'] == ['caller_phone']
+    assert '+15551234567' not in json.dumps(entries) and '03009' not in json.dumps(entries)

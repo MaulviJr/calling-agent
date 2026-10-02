@@ -44,23 +44,28 @@ CAPABILITIES
 ACTION_PROMPT = """Use check_availability for real slots before choosing a booking or reschedule
 time. Use the clinic timezone and current date from get_business_information;
 clarify ambiguous dates. Availability is not a reservation. Never invent a slot.
+Offer only exact slots returned by check_availability. A list may be limited;
+do not infer all-day availability or claim every intervening time is available.
+Prepare the booking successfully BEFORE asking whether to finalize it. A rejected
+preparation is not a booking, even if the caller already said yes. Do not guess
+which field caused a generic error; ask a targeted question only with evidence.
 For an existing appointment, ask for its reference and the phone used to book,
 then call get_appointment. Do not disclose appointment facts before verification.
 Do not confuse a question about cancellation policy with a cancellation request.
 
 create_appointment, cancel_appointment, reschedule_appointment and leave_message
-only PREPARE an action. They return confirmation_required and confirmation_text.
-Speak that entire confirmation_text EXACTLY as returned, then wait for a separate
-unconditional caller agreement. Do not paraphrase this read-back or say success.
-If the caller interrupts or changes ANY details, prepare the corrected action
-and read the new confirmation_text before asking for agreement again. A caller
-selecting a slot is not confirmation. Never call confirm_action in the same turn
-as preparation, before reading the details, or on conditional/ambiguous agreement.
-Only then call confirm_action with the latest action_token. If Python reports
-confirmation_not_verified, repeat preparation/read-back and obtain fresh agreement.
-Explain that confirmation was not verified, rather than claiming a short timeout.
-Ask the caller to wait until all details have been read before confirming. Avoid
-repeated retry loops; if another attempt fails, explain that staff must review it.
+only PREPARE an action. They return confirmation_required and an action_token.
+Ask a brief natural confirmation question, such as "Shall I book that?".
+Do not read back the caller's name, phone, email and all booking details or require
+verbatim confirmation text. A separate clear caller affirmation is sufficient.
+After the caller agrees, call confirm_action with the latest action_token.
+Do not invent confirmation or confirm automatically in the preparation turn.
+If the caller changes details, prepare the corrected action and ask again.
+If Python reports confirmation_not_verified after the caller clearly agreed,
+explain that the booking system has not received the confirmation.
+Do not claim the caller spoke unclearly or repeatedly ask them to say yes.
+Do not claim the booking succeeded.
+Do not describe unverified agreement as an expired booking or enter retry loops.
 If a tool timed out, retry the SAME action_token; do not prepare another action
 to evade a pending or uncertain operation. Report completion ONLY when the backend
 returns status completed for confirm_action. A tool error is not a completed action.
@@ -87,11 +92,11 @@ DESCRIPTIONS = {
     ),
     'check_availability': 'Read verified slots for a service and ISO date. For a reschedule, include the verified appointment reference and booking phone to exclude only its original event.',
     'get_appointment': 'Verify an active appointment using its reference and original booking phone, then return minimal appointment facts.',
-    'create_appointment': 'Prepare a booking using a slot returned by check_availability. No booking occurs yet. Read confirmation_text verbatim and obtain fresh caller agreement.',
-    'cancel_appointment': 'Prepare cancellation of an owned appointment. A policy inquiry is not a cancellation. Read confirmation_text and obtain agreement before confirm_action.',
-    'reschedule_appointment': 'Prepare moving an owned appointment to a checked slot. Read confirmation_text verbatim; no calendar change occurs until confirm_action succeeds.',
-    'leave_message': 'Prepare a callback message for staff. Read confirmation_text and get caller agreement; the message is saved only by confirm_action.',
-    'confirm_action': 'Commit the current action_token after a complete read-back and subsequent unconditional caller agreement. Python independently checks confirmation events. Retry the same token on timeouts.',
+    'create_appointment': 'Prepare a booking using a slot returned by check_availability. No booking occurs yet. Ask briefly for caller agreement before confirm_action.',
+    'cancel_appointment': 'Prepare cancellation of an owned appointment. A policy inquiry is not a cancellation. Obtain caller agreement before confirm_action.',
+    'reschedule_appointment': 'Prepare moving an owned appointment to a checked slot. Obtain caller agreement; no calendar change occurs until confirm_action succeeds.',
+    'leave_message': 'Prepare a callback message for staff. Get caller agreement; the message is saved only by confirm_action.',
+    'confirm_action': 'Commit the current action_token after unconditional caller agreement for the prepared action. Python independently checks confirmation events. Retry the same token on timeouts.',
 }
 
 
@@ -161,7 +166,7 @@ def assistant_config(env=None):
     inline = [tool for tool in tools if tool['function']['name'] not in attached]
     events = ['status-update']
     if actions_enabled:
-        events += ['assistant.speechStarted', 'speech-update', 'user-interrupted', 'transcript']
+        events += ['transcript']
     return {
         'name': 'Ava — receptionist' if actions_enabled else 'Ava — read-only comparison',
         'firstMessage': env.get('VAPI_FIRST_MESSAGE', 'Hi, this is Ava. How can I help?'),

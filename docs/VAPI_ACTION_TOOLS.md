@@ -7,7 +7,7 @@ assistant now has nine tools, including business and staff information.
 | --- | --- |
 | check_availability | Read active service slots against business hours, booking rules, database appointments and Google Calendar |
 | get_appointment | Require appointment reference and original booking phone; return only minimal appointment facts |
-| create_appointment | Prepare a checked booking and return an action token and exact confirmation text |
+| create_appointment | Prepare a checked booking and return an action token and short confirmation prompt |
 | cancel_appointment | Verify the appointment and prepare cancellation |
 | reschedule_appointment | Verify the appointment and prepare moving it to a checked slot |
 | leave_message | Prepare a staff message with callback details |
@@ -21,32 +21,25 @@ and uses the existing scheduling/database/calendar layers. Business IDs are neve
 caller-supplied arguments. The custom agent, conversation, semantic and legacy
 voice modules are outside this path.
 
-Prepare tools do not perform mutations. Python records the exact action and
-read-back in minimal per-call database state. Authenticated Vapi events must show
-the matching assistant speech, that turn stopping, and a later final caller
-transcript with unconditional agreement before `confirm_action` can commit.
-An interruption during the read-back or a follow-up question revokes confirmation
-evidence while retaining the draft. A changed prepared payload replaces its token.
-Missing evidence
-fails closed. Tokens expire after ten minutes or a settings change, are scoped
-to the business and call, and completed tokens return the recorded result.
+Prepare tools do not perform mutations. Python saves the proposed action in
+minimal per-call state and returns an action token plus a short confirmation
+prompt. Ava asks naturally whether to proceed; a later final caller transcript
+with clear affirmation authorizes confirm_action. No full read-back, exact text
+comparison, speech turn matching or speech completion event is required.
 
-Speech comparison allows equivalent voice formatting of whole-hour times,
-zero-padded days and spaced phone digits. It does not accept changed times or
-other changed action details. Speech and final transcript webhooks may arrive
-out of order: authorization uses their event timestamps, not arrival order.
-A premature affirmative remains unverified rather than falsely expiring the
-token. An interruption during the matching read-back requires a fresh full
-read-back and subsequent agreement. Interruptions outside that interval do not
-revoke consent. Event timestamps define the interval, including delayed events.
-Non-affirmative caller responses require a read-back after that response before
-a later affirmative can authorize the draft. `VAPI_CONFIRMATION_STATE` and
-`VAPI_CONFIRMATION_BLOCKED` logs report reasons without caller details.
+Only a final user transcript newer than the prepared action can confirm it.
+Old, partial and assistant transcripts are ignored. A newer correction,
+conditional response or other non-affirmative response revokes prior consent.
+Changed action details require a fresh preparation and new affirmation. Tokens
+are scoped to the call/business, expire after ten minutes or a settings change,
+and completed tokens return the stored result without another write.
 
-Caller consent currently accepts a conservative set of short English affirmative
-responses. Ambiguous or conditional responses require another read-back. Event
-delivery and read-back behavior must be checked in a live call; offline tests do
-not establish that production Vapi delivers every event in the expected order.
+The assistant subscribes only to status updates and final transcripts, reducing
+webhook traffic. Legacy speech and interruption events are ignored. Accepted
+short English affirmations include yes, yes please, I confirm, go ahead and yep;
+conditional or ambiguous responses do not approve an action. This checks the
+caller response but relies on Vapi to connect that response to the intended
+pending action; the backend does not verify what Ava said before it.
 
 Calendar writes reuse the existing idempotent operation/reconciliation mechanism.
 Uncertain results never become spoken success through the backend response. Call
@@ -88,12 +81,12 @@ with `python -m backend.app.vapi_config` remains offline.
 
 These tests use isolated databases and a fake calendar. They cover tenant and
 appointment verification, checked slots, booking/cancellation/rescheduling and
-messages, affirmative versus conditional consent, interruptions, wrong speech,
+messages, affirmative versus conditional consent, ignored speech events, stale transcripts,
 settings changes, call endings, token replay, calendar outages, uncertain-write
 recovery and concurrent booking collisions. They do not write real appointments.
 
-For a live check, first prepare a staff message and confirm it only after Ava
-finishes reading its details. Then test an interruption or correction before
-agreement and check that no old action is committed. If the backend returns
-`confirmation_not_verified`, inspect speech/turn/transcript events before testing
-real appointment changes. Completed live bookings/messages create real records.
+For a live check, request a booking or message, provide the required details,
+and answer yes when Ava briefly asks whether to proceed. The result should be
+completed without reading back all details. Also try a conditional response or
+change a booking detail; Ava must prepare changed details and obtain fresh
+agreement. Completed live bookings/messages create real records.

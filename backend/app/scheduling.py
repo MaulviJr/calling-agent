@@ -10,6 +10,7 @@ from .database import Business, Appointment, Operation, Call, uid, now, record
 from .dates import aware, wall_time
 from .calendar import CalendarUnavailable
 from .lookup import calendar_read
+from .vapi_trace import emit
 
 log = logging.getLogger('ava')
 _sqlite_lock = threading.RLock()
@@ -82,10 +83,14 @@ class Scheduling:
     def free(self, db, business_id, settings, start, end, exclude=None):
         buffer = timedelta(minutes=settings.buffer_minutes)
         for a,b in calendar_read(self.calendar.busy,start-buffer,end+buffer,exclude):
-            if a < end+buffer and b > start-buffer: return False
+            if a < end+buffer and b > start-buffer:
+                emit('slot.conflict', source='calendar', start_at=start, end_at=end, busy_start=a, busy_end=b)
+                return False
         for row in db.scalars(select(Appointment).where(Appointment.business_id==business_id,Appointment.status=='booked')):
             if row.calendar_event_id != exclude and aware(row.start_at)<end+buffer and aware(row.end_at)>start-buffer:
+                emit('slot.conflict', source='database', appointment_id=row.id, start_at=start, end_at=end)
                 return False
+        emit('slot.free', start_at=start, end_at=end)
         return True
 
     def slots(self, business_id, service_id, day, earliest=None, latest=None, exclude=None):
@@ -93,7 +98,14 @@ class Scheduling:
         with self.sessions() as db:
             settings = BusinessSettings.model_validate(db.get(Business,business_id).settings)
             hours = next((h for h in settings.hours if h.weekday==day.weekday()),None)
-            if not hours: return []
+            emit('availability.rules', date=day, current_time=self.clock(), timezone=settings.timezone,
+                 service_id=service_id, services=[{'id':s.id, 'duration':s.duration, 'active':s.active} for s in settings.services],
+                 hours=hours.model_dump(mode='json') if hours else None,
+                 minimum_notice_minutes=settings.minimum_notice_minutes,
+                 maximum_advance_days=settings.maximum_advance_days, buffer_minutes=settings.buffer_minutes)
+            if not hours:
+                emit('availability.closed', date=day)
+                return []
             start = wall_time(day,max(hours.opens,earliest or time()),ZoneInfo(settings.timezone))
             stop = wall_time(day,min(hours.closes,latest or time(23,59)),ZoneInfo(settings.timezone))
             # One provider request per search, not one request per proposed slot.
@@ -101,13 +113,14 @@ class Scheduling:
             busy = calendar_read(self.calendar.busy,start-buffer,stop+timedelta(hours=4)+buffer,exclude)
             busy += [(aware(a.start_at),aware(a.end_at)) for a in db.scalars(select(Appointment).where(
                 Appointment.business_id==business_id,Appointment.status=='booked')) if a.calendar_event_id != exclude]
+            emit('availability.busy_intervals', intervals=busy, window_start=start, window_end=stop)
             result = []
             while start <= stop and len(result)<12:
                 try:
                     end = self.validate(settings,service_id,start)
                     if not any(a<end+buffer and b>start-buffer for a,b in busy): result.append(start.isoformat())
-                except ValueError:
-                    pass
+                except ValueError as exc:
+                    emit('availability.candidate_rejected', start_at=start, reason=str(exc))
                 start += timedelta(minutes=15)
             return result
 
@@ -129,6 +142,7 @@ class Scheduling:
                 op = Operation(business_id=business_id,key=key,kind=kind,payload=payload)
                 db.add(op); db.flush()
             operation_id = op.id
+            emit('calendar.operation_intent', operation_id=op.id, status=op.status, kind=kind)
         error = None
         with self.locked(business_id) as (db,settings):
             op = db.get(Operation,operation_id)
@@ -136,11 +150,14 @@ class Scheduling:
             try:
                 result = self._execute(db,settings,op)
                 op.result_id,op.status = result.id,'completed'
+                emit('calendar.operation_completed', operation_id=op.id, appointment_id=result.id)
                 db.flush()
                 result_data = record(result)
             except ValueError as exc:
+                emit('calendar.operation_rejected', operation_id=op.id, exception_type=type(exc).__name__)
                 op.status='rejected'; error=exc
             except Exception:
+                emit('calendar.operation_uncertain', operation_id=op.id)
                 op.status='uncertain'
                 error=CalendarUnavailable('The calendar change could not be verified. Staff must reconcile it before retrying.')
         if error: raise error

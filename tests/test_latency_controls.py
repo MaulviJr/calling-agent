@@ -1,7 +1,7 @@
 import pytest
 
 from backend.app.conversation import GeminiResponseGenerator, ResponseDraft, TrustedContext
-from backend.app.voice.providers import flux_turn_settings
+from backend.app.legacy_voice_system.providers import flux_turn_settings
 
 
 def test_default_turn_settings_and_override(monkeypatch):
