@@ -242,8 +242,15 @@ class Actions:
             slots = scheduler.slots(bid, args.service_id, args.date, args.earliest, args.latest, exclude=exclude)
             emit('availability.result', service_id=args.service_id, date=args.date,
                  timezone=settings.timezone, slots=slots, reservation_created=False)
-            state['offered'] = {'service_id': args.service_id, 'slots': slots,
-                                'fingerprint': fingerprint(settings)}
+            fp = fingerprint(settings)
+            offered = state.get('offered') or {}
+            if offered.get('fingerprint') != fp or 'by_service' not in offered:
+                offered = {'fingerprint': fp, 'by_service': {}}
+            known = offered['by_service'].get(args.service_id, [])
+            offered['by_service'][args.service_id] = list(dict.fromkeys(known + slots))[-200:]
+            state['offered'] = offered
+            # state['offered'] = {'service_id': args.service_id, 'slots': slots,
+            #                     'fingerprint': fingerprint(settings)}
             return {'success': True, 'status': 'available' if slots else 'unavailable',
                     'data': {'date': args.date.isoformat(), 'timezone': settings.timezone,
                              'service_id': args.service_id, 'slots': slots, 'booked': False}}
@@ -254,8 +261,9 @@ class Actions:
             scheduler = self.scheduler_for_business(bid)
             service_id = args.service_id if kind == 'create' else row.service_id
             offered = state.get('offered', {})
-            if (offered.get('service_id') != service_id or offered.get('fingerprint') != fingerprint(settings)
-                    or not any(datetime.fromisoformat(s) == args.start_at for s in offered.get('slots', []))):
+            allowed = offered.get('by_service', {}).get(service_id, [])
+            if (offered.get('fingerprint') != fingerprint(settings)
+                    or not any(datetime.fromisoformat(s) == args.start_at for s in allowed)):
                 state.pop('pending', None)
                 return fail('select_checked_slot')
             end = scheduler.validate(settings, service_id, args.start_at)

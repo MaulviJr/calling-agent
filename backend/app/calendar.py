@@ -7,7 +7,7 @@ from datetime import datetime, timezone, time
 from google.oauth2 import service_account
 from google.auth.transport.requests import AuthorizedSession
 from .vapi_trace import emit
-
+import threading
 
 class CalendarUnavailable(RuntimeError):
     pass
@@ -21,16 +21,32 @@ class CalendarProvider(Protocol):
     def delete(self, event_id, etag): ...
 
 
+
+
+_credentials = None
+_credentials_lock = threading.Lock()
+
+
+def service_credentials():
+    """The robot Google account is the same for every business; load it once."""
+    global _credentials
+    with _credentials_lock:
+        if _credentials is None:
+            path = os.environ.get('GOOGLE_SERVICE_ACCOUNT_FILE', '')
+            if not path:
+                raise CalendarUnavailable('Calendar is not configured.')
+            _credentials = service_account.Credentials.from_service_account_file(path,
+                scopes=['https://www.googleapis.com/auth/calendar.events',
+                        'https://www.googleapis.com/auth/calendar.freebusy'])
+        return _credentials
+
+
 class GoogleCalendar:
-    def __init__(self):
-        self.calendar_id = os.environ.get('GOOGLE_CALENDAR_ID', '')
-        path = os.environ.get('GOOGLE_SERVICE_ACCOUNT_FILE', '')
-        if not self.calendar_id or not path:
-            raise CalendarUnavailable('Calendar is not configured.')
-        credentials = service_account.Credentials.from_service_account_file(path,
-            scopes=['https://www.googleapis.com/auth/calendar.events',
-                    'https://www.googleapis.com/auth/calendar.freebusy'])
-        self.http = AuthorizedSession(credentials)
+    def __init__(self, calendar_id):
+        if not calendar_id:
+            raise CalendarUnavailable('No calendar is connected for this business.')
+        self.calendar_id = calendar_id
+        self.http = AuthorizedSession(service_credentials())
         self.base = 'https://www.googleapis.com/calendar/v3'
         self.events = '/calendars/' + quote(self.calendar_id, safe='') + '/events'
 

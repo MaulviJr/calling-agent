@@ -117,6 +117,15 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class CalendarConnection(Base):
+    __tablename__ = 'calendar_connections'
+    business_id: Mapped[str] = mapped_column(ForeignKey('businesses.id'), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(20), default='google')
+    # unique: two businesses must never share one calendar by accident
+    calendar_id: Mapped[str] = mapped_column(String(254), unique=True)
+    status: Mapped[str] = mapped_column(String(20), default='unchecked')
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 def database(url=None):
     url = url or os.environ.get('DATABASE_URL')
     if not url:

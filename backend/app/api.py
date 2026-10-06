@@ -20,7 +20,7 @@ from .database import Business, Admin, LoginSession, Call, Appointment, Message,
 from .dates import aware
 from .calendar import UnconfiguredCalendar, CalendarUnavailable
 from .scheduling import Scheduling
-
+from .calendars import FixedCalendar
 log=logging.getLogger('ava')
 passwords=PasswordHash.recommended()
 dummy_hash=passwords.hash('not-a-real-user-password')
@@ -41,10 +41,15 @@ class Mutation(StrictModel):
     start_at: str | None = None
 
 
-def create_app(sessions,calendar=None,llm=None,voice_enabled=False,legacy_enabled=False):
+
+
+def create_app(sessions,calendar=None,llm=None,voice_enabled=False,legacy_enabled=False,calendars=None):
     app=FastAPI(title='Ava',docs_url=None,redoc_url=None)
-    scheduler=Scheduling(sessions,calendar or UnconfiguredCalendar())
+    scheduler=Scheduling(sessions,calendar or UnconfiguredCalendar())   # unchanged: used for locking + legacy
+    router=calendars or FixedCalendar(sessions,calendar or UnconfiguredCalendar())
+
     app.state.scheduler=scheduler
+    app.state.router=router
     origin=os.getenv('APP_ORIGIN','http://localhost:8000').rstrip('/')
     secure=os.getenv('COOKIE_SECURE','false').lower()=='true'
     if not origin.startswith(('http://localhost:','http://127.0.0.1:')) and not secure:
@@ -96,6 +101,7 @@ def create_app(sessions,calendar=None,llm=None,voice_enabled=False,legacy_enable
 
     @app.post('/api/login')
     def login(data:Login,request:Request,response:Response):
+        print('Login attempt from',request.client.host, 'email',data.email, 'password length',len(data.password))
         address=request.client.host
         with throttle_lock:
             if len(attempts)>5000: attempts.clear()
@@ -138,9 +144,12 @@ def create_app(sessions,calendar=None,llm=None,voice_enabled=False,legacy_enable
     @app.get('/api/calendar/status')
     def calendar_status(admin=Depends(current)):
         try:
-            scheduler.calendar.busy(now(),now()+timedelta(minutes=1))
+            router.calendar_for(admin.business_id).busy(now(),now()+timedelta(minutes=1))
             return {'connected':True}
-        except Exception: return {'connected':False,'message':'Check calendar credentials and sharing permissions.'}
+        except CalendarUnavailable as exc:
+            return {'connected':False,'message':str(exc)}
+        except Exception:
+            return {'connected':False,'message':'Check calendar credentials and sharing permissions.'}
 
     @app.get('/api/calls')
     def calls(limit:int=50,offset:int=0,admin=Depends(current)):
@@ -170,7 +179,7 @@ def create_app(sessions,calendar=None,llm=None,voice_enabled=False,legacy_enable
             start=datetime.fromisoformat(data.start_at)
             if start.tzinfo is None: raise ValueError('Include a timezone offset.')
             payload['start_at']=start.isoformat()
-        return scheduler.mutate(admin.business_id,data.key,action,payload,data.confirmed)
+        return router.scheduler_for(admin.business_id).mutate(admin.business_id,data.key,action,payload,data.confirmed)
 
     @app.get('/api/messages')
     def messages(limit:int=50,offset:int=0,admin=Depends(current)):
@@ -213,7 +222,7 @@ def create_app(sessions,calendar=None,llm=None,voice_enabled=False,legacy_enable
         with sessions() as db:
             op=db.scalar(select(Operation).where(Operation.id==operation_id,Operation.business_id==admin.business_id))
             if not op: raise HTTPException(404,'Operation not found.')
-        return scheduler.mutate(admin.business_id,op.key,op.kind,op.payload,True)
+        return router.scheduler_for(admin.business_id).mutate(admin.business_id,op.key,op.kind,op.payload,True)
 
     if legacy_enabled:
         from legacy.app.routes import mount

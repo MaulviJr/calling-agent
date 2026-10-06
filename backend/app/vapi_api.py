@@ -197,15 +197,6 @@ def build_app():
     actions = None
     if os.getenv('VAPI_ACTIONS_ENABLED', 'false').lower() == 'true':
         from .vapi_actions import Actions
-        business_id = os.getenv('VAPI_CALENDAR_BUSINESS_ID', '')
-        allowed = set(settings.assistant_business_map.values())
-        if not business_id or business_id not in allowed:
-            raise RuntimeError('Set VAPI_CALENDAR_BUSINESS_ID to the business owning the configured Google Calendar.')
-        def scheduler_for_business(bid):
-            from .calendar import GoogleCalendar, CalendarUnavailable
-            from .scheduling import Scheduling
-            if bid != business_id:
-                raise CalendarUnavailable('Calendar not configured for this business.')
-            return Scheduling(sessions, GoogleCalendar())
-        actions = Actions(sessions, scheduler_for_business)
+        from .calendars import CalendarRouter   # imported here on purpose, see note below
+        actions = Actions(sessions, CalendarRouter(sessions).scheduler_for)
     return create_app(sessions, settings, actions)
