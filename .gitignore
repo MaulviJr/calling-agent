@@ -13,3 +13,4 @@ dist/
 *.tsbuildinfo
 credentials*.json
 service-account*.json
+logs/vapi-debug.jsonl*
