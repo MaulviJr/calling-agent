@@ -240,6 +240,17 @@ class Actions:
             if args.earliest and args.latest and args.earliest > args.latest:
                 return fail('invalid_time_window')
             slots = scheduler.slots(bid, args.service_id, args.date, args.earliest, args.latest, exclude=exclude)
+            
+            windows = []
+            for s in slots:
+                t = datetime.fromisoformat(s)
+                if windows and t - windows[-1]['_last'] == timedelta(minutes=15):
+                    windows[-1]['_last'], windows[-1]['last_start'] = t, s
+                else:
+                    windows.append({'first_start': s, 'last_start': s, '_last': t})
+            for w in windows:
+                w.pop('_last')
+
             emit('availability.result', service_id=args.service_id, date=args.date,
                  timezone=settings.timezone, slots=slots, reservation_created=False)
             fp = fingerprint(settings)
@@ -252,8 +263,10 @@ class Actions:
             # state['offered'] = {'service_id': args.service_id, 'slots': slots,
             #                     'fingerprint': fingerprint(settings)}
             return {'success': True, 'status': 'available' if slots else 'unavailable',
-                    'data': {'date': args.date.isoformat(), 'timezone': settings.timezone,
-                             'service_id': args.service_id, 'slots': slots, 'booked': False}}
+                     'data': {'date': args.date.isoformat(), 'timezone': settings.timezone,
+                             'service_id': args.service_id, 'slots': slots,
+                             'free_windows': windows, 'slot_step_minutes': 15,
+                             'truncated': len(slots) >= 48, 'booked': False}}
         payload = args.model_dump(mode='json')
         kind = {'create_appointment': 'create', 'cancel_appointment': 'cancel',
                 'reschedule_appointment': 'reschedule', 'leave_message': 'message'}[name]

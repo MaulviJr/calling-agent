@@ -44,8 +44,9 @@ CAPABILITIES
 ACTION_PROMPT = """Use check_availability for real slots before choosing a booking or reschedule
 time. Use the clinic timezone and current date from get_business_information;
 clarify ambiguous dates. Availability is not a reservation. Never invent a slot.
-Offer only exact slots returned by check_availability. A list may be limited;
-do not infer all-day availability or claim every intervening time is available.
+Offer only exact slots returned by check_availability. check_availability returns every bookable start time for that date at 15-minute steps, also grouped as free_windows. 
+Summarize availability as ranges rather than reading every slot, and offer only start times inside those windows. 
+If truncated is true, say later times may exist and check again with an earliest time. Never describe availability for a date you have not checked; call check_availability once for each date the caller mentions.
 Prepare the booking successfully BEFORE asking whether to finalize it. A rejected
 preparation is not a booking, even if the caller already said yes. Do not guess
 which field caused a generic error; ask a targeted question only with evidence.

@@ -93,7 +93,7 @@ class Scheduling:
         emit('slot.free', start_at=start, end_at=end)
         return True
 
-    def slots(self, business_id, service_id, day, earliest=None, latest=None, exclude=None):
+    def slots(self, business_id, service_id, day, earliest=None, latest=None, exclude=None, limit=48):
         from datetime import time
         with self.sessions() as db:
             settings = BusinessSettings.model_validate(db.get(Business,business_id).settings)
@@ -115,7 +115,7 @@ class Scheduling:
                 Appointment.business_id==business_id,Appointment.status=='booked')) if a.calendar_event_id != exclude]
             emit('availability.busy_intervals', intervals=busy, window_start=start, window_end=stop)
             result = []
-            while start <= stop and len(result)<12:
+            while start <= stop and len(result)<limit:
                 try:
                     end = self.validate(settings,service_id,start)
                     if not any(a<end+buffer and b>start-buffer for a,b in busy): result.append(start.isoformat())
