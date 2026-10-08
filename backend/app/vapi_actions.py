@@ -93,20 +93,22 @@ ACTION_SCHEMAS = {
     'confirm_action': ConfirmArgs,
 }
 
+_STRONG = {'yes', 'yeah', 'yep', 'yup', 'sure', 'ok', 'okay', 'confirm', 'confirmed',
+           'proceed', 'correct', 'right', 'absolutely', 'definitely', 'ahead'}
+_FILLER = {'please', 'thanks', 'thank', 'you', 'ma', 'am', 'maam', 'sir', 'i', 'it',
+           'that', 'is', 's', 'go', 'do', 'book', 'cancel', 'reschedule', 'sounds',
+           'good', 'great', 'perfect', 'fine', 'now', 'the', 'a', 'one', 'so', 'uh', 'um'}
 
 def normalize(value):
     return ' '.join(re.sub(r'[^\w\s]', ' ', value.casefold()).split())
 
 
 def affirmative(value):
-    # Narrow consent grammar. Never let an LLM-provided boolean authorize writes.
-    return normalize(value) in {
-        'yes', 'yes please', 'yes that is correct', 'yes that s correct',
-        'that is correct', 'that s correct', 'i confirm', 'please proceed',
-        'yes go ahead', 'go ahead', 'yes book it', 'yes cancel it', 'yes reschedule it',
-        'yes i confirm', 'yes i confirm it', 'i confirm it',
-        'yeah', 'yep', 'sure', 'okay', 'ok', 'yes sure', 'yes please go ahead',
-    }
+    # Closed vocabulary: any unrecognised word (no, but, if, change, maybe...) rejects.
+    words = normalize(value).split()
+    if not words or len(words) > 8:
+        return False
+    return all(w in _STRONG or w in _FILLER for w in words) and any(w in _STRONG for w in words)
 
 
 def fail(code, status='rejected'):
