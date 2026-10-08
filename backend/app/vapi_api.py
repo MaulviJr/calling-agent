@@ -141,7 +141,7 @@ def create_app(sessions, settings, actions=None):
         body = bytearray()
         async for chunk in request.stream():
             body.extend(chunk)
-            if len(body) > MAX_BODY_BYTES:
+            if len(body) > limit:
                 raise HTTPException(413, 'Request too large.')
         try:
             payload = json.loads(body)
@@ -167,7 +167,7 @@ def create_app(sessions, settings, actions=None):
 
     @app.post('/api/vapi/events')
     async def events(request: Request):
-        message = await authenticated_message(request)
+        message = await authenticated_message(request, limit=EVENT_BODY_BYTES)
         call_id, business_id = call_context(message, settings)
         kind = message.get('type')
         if kind == 'status-update' and message.get('status') == 'in-progress':

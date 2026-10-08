@@ -42,12 +42,13 @@
     "backoffSeconds": 1
   },
   "server": {
-    "url": "https://influences-tail-spokesman-stomach.trycloudflare.com/api/vapi/events",
+    "url": "https://defend-row-pharmaceutical-forming.trycloudflare.com/api/vapi/events",
     "credentialId": "a00058c0-3514-4768-828c-2ffb40cc6ef9"
   },
   "serverMessages": [
     "status-update",
-    "transcript"
+    "transcript",
+    "end-of-call-report"
   ],
   "maxDurationSeconds": 600
 }

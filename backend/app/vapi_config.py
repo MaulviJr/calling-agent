@@ -176,7 +176,7 @@ def assistant_config(env=None):
     inline = [tool for tool in tools if tool['function']['name'] not in attached]
     events = ['status-update']
     if actions_enabled:
-        events += ['transcript']
+        events += ['transcript','end-of-call-report']
     return {
         'name': 'Ava — receptionist' if actions_enabled else 'Ava — read-only comparison',
         'firstMessage': env.get('VAPI_FIRST_MESSAGE', 'Hi, this is Ava. How can I help?'),
