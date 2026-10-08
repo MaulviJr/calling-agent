@@ -16,7 +16,7 @@ from .vapi_trace import emit, scope
 
 log = logging.getLogger('ava.vapi')
 MAX_BODY_BYTES = 262144
-
+EVENT_BODY_BYTES = 1048576
 
 class WebhookSettings(StrictModel):
     token: str = Field(min_length=32, max_length=512, repr=False)
@@ -134,7 +134,7 @@ def create_app(sessions, settings, actions=None):
     app = FastAPI(title='Ava Vapi read-only tools', docs_url=None, redoc_url=None,
                   openapi_url=None)
 
-    async def authenticated_message(request):
+    async def authenticated_message(request,limit=MAX_BODY_BYTES):
         authorization = request.headers.get('authorization', '')
         if not secrets.compare_digest(authorization.encode(), ('Bearer ' + settings.token).encode()):
             raise HTTPException(401, 'Webhook authentication required.')

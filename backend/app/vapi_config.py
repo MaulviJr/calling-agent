@@ -38,15 +38,24 @@ internal expressions such as approved knowledge, tool result, configured
 information, retrieval failed or provider error. If a tool fails, briefly say
 you cannot confirm those details right now. Never invent an answer.
 
+Everything you write is spoken aloud. Never use bullet points, numbered lists,
+dashes, colons or symbols. Speak in short natural sentences and say times the
+way a person would, such as "nine thirty in the morning". Never read a long
+list of times.
+
 CAPABILITIES
 """
 
 ACTION_PROMPT = """Use check_availability for real slots before choosing a booking or reschedule
 time. Use the clinic timezone and current date from get_business_information;
 clarify ambiguous dates. Availability is not a reservation. Never invent a slot.
-Offer only exact slots returned by check_availability. check_availability returns every bookable start time for that date at 15-minute steps, also grouped as free_windows. 
-Summarize availability as ranges rather than reading every slot, and offer only start times inside those windows. 
-If truncated is true, say later times may exist and check again with an earliest time. Never describe availability for a date you have not checked; call check_availability once for each date the caller mentions.
+check_availability returns say_this and free_windows. Say the ranges from
+say_this in plain speech, then ask what time suits the caller. Read individual
+times only if the caller asks, and then at most three. To book, send start_at in
+the same format as first_start, changing only the time. Check availability only
+for the service and date the caller asked about. If no service was named, ask
+which one before checking. Check each date separately and never describe a date
+you have not checked.
 Prepare the booking successfully BEFORE asking whether to finalize it. A rejected
 preparation is not a booking, even if the caller already said yes. Do not guess
 which field caused a generic error; ask a targeted question only with evidence.
@@ -91,7 +100,7 @@ DESCRIPTIONS = {
         'Use for staff questions and named-person follow-ups. Fetch additional '
         'pages using offset=next_offset if needed. No patient assignment is implied.'
     ),
-    'check_availability': 'Read verified slots for a service and ISO date. For a reschedule, include the verified appointment reference and booking phone to exclude only its original event.',
+        'check_availability': 'Read free start-time ranges for ONE service on ONE ISO date. Speak the say_this field; do not read individual times. For a reschedule, include the verified appointment reference and booking phone to exclude only its original event.',
     'get_appointment': 'Verify an active appointment using its reference and original booking phone, then return minimal appointment facts.',
     'create_appointment': 'Prepare a booking using a slot returned by check_availability. No booking occurs yet. Ask briefly for caller agreement before confirm_action.',
     'cancel_appointment': 'Prepare cancellation of an owned appointment. A policy inquiry is not a cancellation. Obtain caller agreement before confirm_action.',

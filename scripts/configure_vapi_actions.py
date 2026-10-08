@@ -26,8 +26,10 @@ def main():
         ids = {}
         for tool in tool_definitions(env):
             name = tool['function']['name']
-            match = next((item for item in existing if item.get('function', {}).get('name') == name
-                          and item.get('server', {}).get('url') == tool['server']['url']), None)
+            # match = next((item for item in existing if item.get('function', {}).get('name') == name
+            #               and item.get('server', {}).get('url') == tool['server']['url']), None)
+            match = next((item for item in existing
+              if item.get('function', {}).get('name') == name), None)
             response = client.patch('/tool/' + match['id'], json=tool) if match else client.post('/tool', json=tool)
             if response.is_error:
                 # API diagnostics can echo credentials; print only status and tool name.

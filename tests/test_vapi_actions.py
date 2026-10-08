@@ -11,7 +11,7 @@ from backend.app.database import Appointment, Business, Call, Message, Operation
 from backend.app.vapi_actions import Actions
 from backend.app.vapi_api import WebhookSettings, create_app
 from backend.app.vapi_config import assistant_config
-
+from datetime import datetime, timedelta
 TOKEN = 'test-only-webhook-token-with-32-characters'
 AUTH = {'Authorization': 'Bearer ' + TOKEN}
 
@@ -33,6 +33,15 @@ def action_system(system):
     yield client, actions, sessions, bid, calendar, scheduler
     client.close()
 
+
+
+def slot_list(result):
+    times = []
+    for w in result['data']['free_windows']:
+        t, last = datetime.fromisoformat(w['first_start']), datetime.fromisoformat(w['last_start'])
+        while t <= last:
+            times.append(t.isoformat()); t += timedelta(minutes=15)
+    return times
 
 def invoke(client, name, arguments=None, *, call='call-a', key=None, assistant='a'):
     response = client.post('/api/vapi/tools', headers=AUTH, json={'message': {
@@ -292,7 +301,7 @@ def test_action_configuration_exposes_nine_tools_and_confirmation_events():
     config = assistant_config({'VAPI_PUBLIC_BASE_URL': 'https://example.test',
         'VAPI_SERVER_CREDENTIAL_ID': 'credential', 'VAPI_ELEVENLABS_VOICE_ID': 'voice', 'VAPI_ACTIONS_ENABLED': 'true'})
     assert len(config['model']['tools']) == 9
-    assert config['serverMessages'] == ['status-update', 'transcript']
+    assert config['serverMessages'] == ['status-update', 'transcript','end-of-call-report']
     assert 'confirm_action' in config['model']['messages'][0]['content']
     for tool in config['model']['tools']:
         assert '"title"' not in json.dumps(tool['function']['parameters'])
@@ -320,3 +329,5 @@ def test_booking_trace_shows_data_flow_and_validation_without_private_inputs(act
     errors = next(e for e in entries if e['stage'] == 'action.exception')
     assert errors['validation_errors'][0]['field'] == ['caller_phone']
     assert '+15551234567' not in json.dumps(entries) and '03009' not in json.dumps(entries)
+
+

@@ -128,6 +128,9 @@ class CalendarConnection(Base):
 
 def database(url=None):
     url = url or os.environ.get('DATABASE_URL')
+    kwargs = {} if url.startswith('sqlite') else {'pool_size': 5, 'max_overflow': 5, 'pool_recycle': 300}
+    engine = create_engine(url, pool_pre_ping=True, **kwargs,
+        connect_args={'check_same_thread': False} if url.startswith('sqlite') else {})
     if not url:
         raise RuntimeError('Set DATABASE_URL and run migrations before starting Ava.')
     engine = create_engine(url, pool_pre_ping=True,

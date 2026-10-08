@@ -16,6 +16,9 @@ from .business import BusinessSettings, StrictModel
 from .database import Appointment, Business, Call, Message, Operation, now, uid
 from .dates import aware
 from .vapi_trace import emit
+from datetime import date, datetime, time as daytime, timedelta   # add timedelta if missing
+from .database import Appointment, Business, Call, Message, Operation, TranscriptTurn, now, uid
+from .vapi_reports import extract_report
 
 _locks = [threading.RLock() for _ in range(64)]
 log = logging.getLogger('ava.vapi')
@@ -248,8 +251,17 @@ class Actions:
                     windows[-1]['_last'], windows[-1]['last_start'] = t, s
                 else:
                     windows.append({'first_start': s, 'last_start': s, '_last': t})
+
+            def say(value):
+                t = datetime.fromisoformat(value).astimezone(ZoneInfo(settings.timezone))
+                return t.strftime('%I:%M %p').lstrip('0')
+
             for w in windows:
+                w['from'], w['to'] = say(w['first_start']), say(w['last_start'])
                 w.pop('_last')
+            say_this = ('Start times are free from ' + ', and from '.join(
+                f"{w['from']} to {w['to']}" for w in windows) + ', every 15 minutes.'
+                ) if windows else 'No start times are free on this date.'
 
             emit('availability.result', service_id=args.service_id, date=args.date,
                  timezone=settings.timezone, slots=slots, reservation_created=False)
@@ -263,8 +275,8 @@ class Actions:
             # state['offered'] = {'service_id': args.service_id, 'slots': slots,
             #                     'fingerprint': fingerprint(settings)}
             return {'success': True, 'status': 'available' if slots else 'unavailable',
-                     'data': {'date': args.date.isoformat(), 'timezone': settings.timezone,
-                             'service_id': args.service_id, 'slots': slots,
+                      'data': {'date': args.date.isoformat(), 'timezone': settings.timezone,
+                             'service_id': args.service_id, 'say_this': say_this,
                              'free_windows': windows, 'slot_step_minutes': 15,
                              'truncated': len(slots) >= 48, 'booked': False}}
         payload = args.model_dump(mode='json')
@@ -359,8 +371,59 @@ class Actions:
         self.save(cid, state, outcome)
         return result
 
+    def report(self, bid, external_id, message):
+        data = extract_report(message)
+        artifact = message.get('artifact')
+        emit('report.parsed', message_keys=sorted(message),
+             artifact_keys=sorted(artifact) if isinstance(artifact, dict) else [],
+             turns=len(data['turns']), has_summary=bool(data['summary']), has_number=bool(data['phone']))
+        with locked(self.sessions, bid, external_id):
+            cid, state, _, _ = self.load(bid, external_id)
+            if state.get('report_saved'):          # Vapi may deliver the same report twice
+                emit('report.skipped', reason='already_saved')
+                return False
+            with self.sessions.begin() as db:
+                call = db.get(Call, cid)
+                if data['started_at']:
+                    call.started_at = data['started_at']
+                call.ended_at = data['ended_at'] or call.ended_at or now()
+                call.status = 'completed'
+                if data['duration_seconds'] is not None:
+                    call.duration_seconds = data['duration_seconds']
+                if data['phone']:
+                    call.caller_phone = data['phone']
+                if 'error' in data['ended_reason'].lower():
+                    call.failure_reason = data['ended_reason']
+                if data['summary']:
+                    call.summary, call.summary_status = data['summary'], 'ai'
+                else:
+                    minutes, seconds = divmod(call.duration_seconds, 60)
+                    call.summary = (f"Call lasted {minutes}:{seconds:02d}. Outcome: "
+                                    f"{call.outcome.replace('_', ' ')}. No AI summary was provided.")
+                    call.summary_status = 'deterministic'
+                previous = None
+                base = aware(call.started_at)
+                for turn in data['turns']:
+                    if turn['seconds'] is not None:
+                        at = base + timedelta(seconds=turn['seconds'])
+                    else:
+                        at = previous + timedelta(milliseconds=1) if previous else base
+                    if previous and at <= previous:
+                        at = previous + timedelta(milliseconds=1)   # keeps the dashboard order stable
+                    previous = at
+                    db.add(TranscriptTurn(business_id=bid, call_id=cid, role=turn['role'],
+                                          text=turn['text'], delivery='vapi', created_at=at))
+                vapi = {**call.state.get('vapi', {}), 'report_saved': True,
+                        'report': {'ended_reason': data['ended_reason'], 'cost': data['cost']}}
+                vapi.pop('pending', None)           # the call is over
+                call.state = {**call.state, 'vapi': vapi}
+            emit('report.saved', turns=len(data['turns']), duration_seconds=data['duration_seconds'])
+            return True
+
     def event(self, bid, external_id, message):
         kind = message.get('type')
+        if kind == 'end-of-call-report':
+            return self.report(bid, external_id, message)
         if kind == 'transcript[transcriptType="final"]':
             kind = 'transcript'
             message = {**message, 'transcriptType': 'final'}
