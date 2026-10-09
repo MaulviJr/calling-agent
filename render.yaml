@@ -8,10 +8,10 @@ services:
     startCommand: uvicorn backend.app.vapi_api:build_app --factory --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
-      - {key: PYTHON_VERSION, value: 3.12.7}
+      - {key: PYTHON_VERSION, value: 3.14.6}
       - {key: DATABASE_URL, sync: false}
       - {key: GOOGLE_SERVICE_ACCOUNT_FILE, value: /etc/secrets/service-account.json}
       - {key: VAPI_WEBHOOK_TOKEN, sync: false}
-      - {key: VAPI_ASSISTANT_BUSINESS_MAP, sync: false}
+      - {key: VAPI_ASSISTANT_BUSINESS_MAP, value: "{}"}
       - {key: VAPI_ACTIONS_ENABLED, value: "true"}
-      - {key: VAPI_CALENDAR_BUSINESS_ID, sync: false}
+      - {key: VAPI_TRACE_ENABLED, value: "false"}
