@@ -299,7 +299,7 @@ def test_end_event_blocks_pending_actions(action_system):
 
 def test_action_configuration_exposes_nine_tools_and_confirmation_events():
     config = assistant_config({'VAPI_PUBLIC_BASE_URL': 'https://example.test',
-        'VAPI_SERVER_CREDENTIAL_ID': 'credential', 'VAPI_ELEVENLABS_VOICE_ID': 'voice', 'VAPI_ACTIONS_ENABLED': 'true'})
+        'VAPI_SERVER_CREDENTIAL_ID': 'credential', 'VAPI_VOICE_ID': 'voice', 'VAPI_ACTIONS_ENABLED': 'true'})
     assert len(config['model']['tools']) == 9
     assert config['serverMessages'] == ['status-update', 'transcript','end-of-call-report']
     assert 'confirm_action' in config['model']['messages'][0]['content']
@@ -329,5 +329,4 @@ def test_booking_trace_shows_data_flow_and_validation_without_private_inputs(act
     errors = next(e for e in entries if e['stage'] == 'action.exception')
     assert errors['validation_errors'][0]['field'] == ['caller_phone']
     assert '+15551234567' not in json.dumps(entries) and '03009' not in json.dumps(entries)
-
 

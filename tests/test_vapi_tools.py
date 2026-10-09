@@ -267,7 +267,7 @@ for prefix in ('legacy', 'backend.app.agent', 'backend.app.conversation', 'backe
 
 def test_assistant_configuration_has_only_two_authenticated_tools():
     config = assistant_config({'VAPI_PUBLIC_BASE_URL': 'https://example.test',
-        'VAPI_SERVER_CREDENTIAL_ID': 'credential-id', 'VAPI_ELEVENLABS_VOICE_ID': 'voice-id',
+        'VAPI_SERVER_CREDENTIAL_ID': 'credential-id', 'VAPI_VOICE_ID': 'voice-id',
         'VAPI_WEBHOOK_TOKEN': TOKEN, 'VAPI_MODEL': 'chosen-model'})
     assert config['model']['model'] == 'chosen-model'
     assert [tool['function']['name'] for tool in config['model']['tools']] == [
@@ -283,17 +283,47 @@ def test_assistant_configuration_has_only_two_authenticated_tools():
     assert 'functions' not in config['model']
 
 
+def test_assistant_configuration_uses_business_identity_and_voice():
+    business = BusinessSettings(
+        name='Example Wellness Center',
+        assistant_name='Maya',
+        greeting='Welcome to Example Wellness Center.',
+        voice_id='business-voice',
+    )
+    config = assistant_config({
+        'VAPI_PUBLIC_BASE_URL': 'https://example.test',
+        'VAPI_SERVER_CREDENTIAL_ID': 'credential-id',
+        'VAPI_VOICE_ID': 'fallback-voice',
+    }, business)
+
+    assert config['name'] == 'Example Wellness Center — Maya'
+    assert config['firstMessage'] == business.greeting
+    assert config['voice']['voiceId'] == 'business-voice'
+    assert 'You are Maya, a warm receptionist for Example Wellness Center' in config['model']['messages'][0]['content']
+
+
+def test_assistant_configuration_uses_environment_voice_when_business_voice_is_empty():
+    business = BusinessSettings(name='Example Wellness Center', voice_id='')
+    config = assistant_config({
+        'VAPI_PUBLIC_BASE_URL': 'https://example.test',
+        'VAPI_SERVER_CREDENTIAL_ID': 'credential-id',
+        'VAPI_VOICE_ID': 'fallback-voice',
+    }, business)
+
+    assert config['voice']['voiceId'] == 'fallback-voice'
+
+
 @pytest.mark.parametrize('url', ['http://example.test', 'https://user:secret@example.test',
                                 'https://example.test?token=secret', ''])
 def test_configuration_requires_clean_https_url(url):
     with pytest.raises(ValueError):
         assistant_config({'VAPI_PUBLIC_BASE_URL': url,
-                          'VAPI_SERVER_CREDENTIAL_ID': 'credential-id', 'VAPI_ELEVENLABS_VOICE_ID': 'voice-id'})
+                          'VAPI_SERVER_CREDENTIAL_ID': 'credential-id', 'VAPI_VOICE_ID': 'voice-id'})
 
 
 def test_saved_tool_ids_replace_inline_definitions():
     env = {'VAPI_PUBLIC_BASE_URL': 'https://example.test',
-           'VAPI_SERVER_CREDENTIAL_ID': 'credential-id', 'VAPI_ELEVENLABS_VOICE_ID': 'voice-id',
+           'VAPI_SERVER_CREDENTIAL_ID': 'credential-id', 'VAPI_VOICE_ID': 'voice-id',
            'VAPI_BUSINESS_TOOL_ID': 'business-tool', 'VAPI_STAFF_TOOL_ID': 'staff-tool'}
     model = assistant_config(env)['model']
     assert model['tools'] == []

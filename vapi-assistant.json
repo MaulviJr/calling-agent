@@ -29,9 +29,9 @@
     ]
   },
   "voice": {
-    "provider": "11labs",
-    "voiceId": "JBFqnCBsd6RMkjVDRZzb",
-    "model": "eleven_flash_v2_5"
+    "provider": "vapi",
+    "voiceId": "Elliot",
+    "version": 2
   },
   "startSpeakingPlan": {
     "waitSeconds": 0.4

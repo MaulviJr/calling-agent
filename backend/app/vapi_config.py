@@ -147,16 +147,20 @@ def tool_definitions(env):
     ]
 
 
-def assistant_config(env=None):
+def assistant_config(env=None, business=None):
     env = os.environ if env is None else env
     base = env.get('VAPI_PUBLIC_BASE_URL', '').rstrip('/')
     url = urlsplit(base)
     if url.scheme != 'https' or not url.netloc or url.username or url.password or url.query or url.fragment:
         raise ValueError('VAPI_PUBLIC_BASE_URL must be a public HTTPS base URL without credentials, query or fragment.')
     credential = env.get('VAPI_SERVER_CREDENTIAL_ID', '').strip()
-    voice = env.get('VAPI_ELEVENLABS_VOICE_ID', '').strip()
+    voice = env.get('VAPI_VOICE_ID', 'Elliot').strip()
     if not credential or not voice:
-        raise ValueError('Set VAPI_SERVER_CREDENTIAL_ID and VAPI_ELEVENLABS_VOICE_ID.')
+        raise ValueError('Set VAPI_SERVER_CREDENTIAL_ID and VAPI_VOICE_ID.')
+    try:
+        voice_version = int(env.get('VAPI_VOICE_VERSION', '2'))
+    except ValueError as exc:
+        raise ValueError('VAPI_VOICE_VERSION must be an integer.') from exc
     saved_ids = [env.get('VAPI_BUSINESS_TOOL_ID', '').strip(),
                  env.get('VAPI_STAFF_TOOL_ID', '').strip()]
     if any(saved_ids) and not all(saved_ids):
@@ -177,19 +181,29 @@ def assistant_config(env=None):
     events = ['status-update']
     if actions_enabled:
         events += ['transcript','end-of-call-report']
+    persona = business.assistant_name if business else 'Ava'
+    prompt = SYSTEM_PROMPT.replace('CAPABILITIES', ACTION_PROMPT if actions_enabled else READ_ONLY_PROMPT)
+    if business:
+        prompt = prompt.replace(
+            'You are Ava, a warm receptionist for an appointment-based clinic.',
+            f'You are {persona}, a warm receptionist for {business.name}, an appointment-based business.',
+            1,
+        )
+    default_name = 'Ava — receptionist' if actions_enabled else 'Ava — read-only comparison'
     return {
-        'name': 'Ava — receptionist' if actions_enabled else 'Ava — read-only comparison',
-        'firstMessage': env.get('VAPI_FIRST_MESSAGE', 'Hi, this is Ava. How can I help?'),
+        'name': (f'{business.name} — {persona}' if business else default_name)[:40],
+        'firstMessage': business.greeting if business else env.get('VAPI_FIRST_MESSAGE', 'Hi, this is Ava. How can I help?'),
         'transcriber': {'provider': 'deepgram',
                         'model': env.get('VAPI_TRANSCRIBER_MODEL', 'nova-3'),
                         'language': 'en'},
         'model': {'provider': env.get('VAPI_MODEL_PROVIDER', 'openai'),
                   'model': env.get('VAPI_MODEL', 'gpt-4o-mini'),
-                  'messages': [{'role': 'system', 'content': SYSTEM_PROMPT.replace('CAPABILITIES', ACTION_PROMPT if actions_enabled else READ_ONLY_PROMPT)}],
+                  'messages': [{'role': 'system', 'content': prompt}],
                   'tools': inline,
                   **({'toolIds': list(attached.values())} if attached else {})},
-        'voice': {'provider': '11labs', 'voiceId': voice,
-                  'model': env.get('VAPI_ELEVENLABS_MODEL', 'eleven_flash_v2_5')},
+        'voice': {'provider': env.get('VAPI_VOICE_PROVIDER', 'vapi'),
+                  'voiceId': business.voice_id if business and business.voice_id else voice,
+                  'version': voice_version},
         'startSpeakingPlan': {'waitSeconds': 0.4},
         'stopSpeakingPlan': {'numWords': 0, 'voiceSeconds': 0.2, 'backoffSeconds': 1},
         'server': {'url': base + '/api/vapi/events', 'credentialId': credential},

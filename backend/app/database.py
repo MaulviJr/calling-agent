@@ -87,7 +87,12 @@ class Appointment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, onupdate=now)
 
-
+class VapiAssistant(Base):
+    __tablename__ = 'vapi_assistants'
+    assistant_id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    business_id: Mapped[str] = mapped_column(ForeignKey('businesses.id'), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    
 class Operation(Base):
     __tablename__ = 'operations'
     __table_args__ = (UniqueConstraint('business_id', 'key'),)
@@ -136,6 +141,7 @@ def database(url=None):
     engine = create_engine(url, pool_pre_ping=True,
         connect_args={'check_same_thread': False} if url.startswith('sqlite') else {})
     return engine, sessionmaker(engine, expire_on_commit=False)
+
 
 
 def record(row):

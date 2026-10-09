@@ -44,9 +44,9 @@ Keep your existing app running as before. Add the blank Vapi variables from
    UI, including parking, accessibility and walk-in policy where known.
 3. In Vapi create a Custom Credential using an `Authorization` Bearer token
    matching `VAPI_WEBHOOK_TOKEN`. Set its ID as `VAPI_SERVER_CREDENTIAL_ID`.
-4. Set `VAPI_PUBLIC_BASE_URL` to your HTTPS tunnel/proxy base URL and
-   `VAPI_ELEVENLABS_VOICE_ID` to your chosen voice. Provider/model settings are
-   environment-driven and should match providers enabled in your Vapi account.
+4. Set `VAPI_PUBLIC_BASE_URL` to your HTTPS tunnel/proxy base URL. The default
+   voice is Vapi's version 2 `Elliot`; configure it with `VAPI_VOICE_PROVIDER`,
+   `VAPI_VOICE_ID`, and `VAPI_VOICE_VERSION` if you need a different Vapi voice.
 5. Generate configuration without making network calls:
 
    ```powershell

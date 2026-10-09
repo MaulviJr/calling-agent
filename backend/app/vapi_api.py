@@ -13,14 +13,17 @@ from .business import StrictModel
 from .database import database
 from .vapi_tools import TOOLS, execute_tool
 from .vapi_trace import emit, scope
-
+from .database import database, VapiAssistant
 log = logging.getLogger('ava.vapi')
 MAX_BODY_BYTES = 262144
 EVENT_BODY_BYTES = 1048576
 
+
+
+
 class WebhookSettings(StrictModel):
     token: str = Field(min_length=32, max_length=512, repr=False)
-    assistant_business_map: dict[str, str] = Field(min_length=1, max_length=100)
+    assistant_business_map: dict[str, str] = Field(default_factory=dict, max_length=100)
 
     @classmethod
     def from_env(cls):
@@ -44,18 +47,40 @@ def bad_request():
     return HTTPException(400, 'Invalid Vapi webhook.')
 
 
-def call_context(message, settings):
+def make_resolver(sessions, settings, ttl=30):
+    """Env map first (local dev), then the database. Only hits are cached."""
+    cache = {}
+
+    def resolve(assistant_id):
+        mapped = settings.assistant_business_map.get(assistant_id)
+        if mapped:
+            return mapped
+        hit = cache.get(assistant_id)
+        if hit and time.monotonic() - hit[1] < ttl:
+            return hit[0]
+        with sessions() as db:
+            row = db.get(VapiAssistant, assistant_id)
+            business_id = row.business_id if row else None
+        if business_id:
+            cache[assistant_id] = (business_id, time.monotonic())
+        return business_id
+    return resolve
+
+
+def call_context(message, resolve):
     try:
         call = message['call']
         call_id = Identifier(value=call['id']).value
         assistant_id = Identifier(value=call['assistantId']).value
-        # Metadata may contain the expanded assistant as well. Reject conflicts.
         assistant = message.get('assistant')
         if assistant is not None and assistant.get('id') != assistant_id:
             raise ValueError
     except (KeyError, TypeError, ValueError, AttributeError):
         raise bad_request() from None
-    business_id = settings.assistant_business_map.get(assistant_id)
+    try:
+        business_id = resolve(assistant_id)
+    except Exception:
+        raise HTTPException(503, 'Assistant lookup unavailable.') from None
     if business_id is None:
         raise HTTPException(403, 'Assistant is not authorized.')
     return call_id, business_id
@@ -133,7 +158,7 @@ def create_app(sessions, settings, actions=None):
     """No custom controller, Calendar, STT, LLM SDK, or TTS initialization."""
     app = FastAPI(title='Ava Vapi read-only tools', docs_url=None, redoc_url=None,
                   openapi_url=None)
-
+    resolve = make_resolver(sessions, settings)
     async def authenticated_message(request,limit=MAX_BODY_BYTES):
         authorization = request.headers.get('authorization', '')
         if not secrets.compare_digest(authorization.encode(), ('Bearer ' + settings.token).encode()):
@@ -159,7 +184,7 @@ def create_app(sessions, settings, actions=None):
     @app.post('/api/vapi/tools')
     async def tools(request: Request):
         message = await authenticated_message(request)
-        call_id, business_id = call_context(message, settings)
+        call_id, business_id = call_context(message, resolve)
         if message.get('type') != 'tool-calls':
             raise bad_request()
         calls = parse_tool_calls(message)
@@ -168,7 +193,7 @@ def create_app(sessions, settings, actions=None):
     @app.post('/api/vapi/events')
     async def events(request: Request):
         message = await authenticated_message(request, limit=EVENT_BODY_BYTES)
-        call_id, business_id = call_context(message, settings)
+        call_id, business_id = call_context(message, resolve)
         kind = message.get('type')
         if kind == 'status-update' and message.get('status') == 'in-progress':
             log.info('VAPI_CALL_STARTED call_id=%s', call_id)
