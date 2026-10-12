@@ -93,19 +93,42 @@ ACTION_SCHEMAS = {
     'confirm_action': ConfirmArgs,
 }
 
+_FOLD = str.maketrans({'\u064a': '\u06cc', '\u0649': '\u06cc', '\u0643': '\u06a9', '\u0647': '\u06c1'})
+
+
+def normalize(value):
+    value = unicodedata.normalize('NFKC', value).casefold().translate(_FOLD)
+    value = ''.join(c for c in value if unicodedata.category(c) != 'Mn')   # drop diacritics
+    value = value.replace('\u200c', ' ').replace('\u0640', '')            # joiner, tatweel
+    return ' '.join(re.sub(r'[^\w\s]', ' ', value).split())
+
+
 _STRONG = {'yes', 'yeah', 'yep', 'yup', 'sure', 'ok', 'okay', 'confirm', 'confirmed',
            'proceed', 'correct', 'right', 'absolutely', 'definitely', 'ahead'}
 _FILLER = {'please', 'thanks', 'thank', 'you', 'ma', 'am', 'maam', 'sir', 'i', 'it',
            'that', 'is', 's', 'go', 'do', 'book', 'cancel', 'reschedule', 'sounds',
            'good', 'great', 'perfect', 'fine', 'now', 'the', 'a', 'one', 'so', 'uh', 'um'}
 
-def normalize(value):
-    return ' '.join(re.sub(r'[^\w\s]', ' ', value.casefold()).split())
+# Urdu agreement. A bare "ji" is NOT agreement (it also means "pardon?"), so it is only a filler.
+_URDU_STRONG = ['ہاں', 'ہان', 'ٹھیک', 'بالکل', 'ضرور', 'صحیح', 'درست', 'اوکے',
+                'کردیں', 'کردو', 'کردیجیے', 'کردیجئے',
+                'haan', 'han', 'theek', 'thik', 'bilkul', 'zaroor', 'zarur', 'sahi',
+                'kardein', 'kardain', 'kardo', 'kardijiye']
+_URDU_FILLER = ['جی', 'آپ', 'براہ', 'مہربانی', 'شکریہ', 'پلیز', 'ہے',
+                'ji', 'jee', 'aap', 'ap', 'hai', 'mehrbani', 'meherbani', 'shukriya', 'shukria']
+_STRONG |= {normalize(w) for w in _URDU_STRONG}
+_FILLER |= {normalize(w) for w in _URDU_FILLER}
+
+# "kar dein" / "کر دیں" written as two words count as one agreement word.
+_KAR = re.compile(r'\b(?:%s)\s+(?:%s)\b' % (
+    '|'.join(normalize(w) for w in ['کر', 'kar']),
+    '|'.join(normalize(w) for w in ['دیں', 'دین', 'دیجیے', 'دیجئے', 'دو',
+                                    'dein', 'den', 'dain', 'do', 'dijiye', 'dijiyega'])))
 
 
 def affirmative(value):
     # Closed vocabulary: any unrecognised word (no, but, if, change, maybe...) rejects.
-    words = normalize(value).split()
+    words = _KAR.sub('kardein', normalize(value)).split()
     if not words or len(words) > 8:
         return False
     return all(w in _STRONG or w in _FILLER for w in words) and any(w in _STRONG for w in words)

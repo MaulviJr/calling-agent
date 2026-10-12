@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
+from backend.app.vapi_actions import affirmative
 
 from backend.app.business import BusinessSettings
 from backend.app.database import Appointment, Business, Call, Message, Operation
@@ -34,7 +35,17 @@ def action_system(system):
     client.close()
 
 
+@pytest.mark.parametrize('text', ['جی ہاں', 'ہاں جی بالکل', 'ٹھیک ہے', 'جی ٹھیک ہے', 'بالکل کر دیں',
+                                  'ہاں، کر دیجیے', 'جی ہاں۔', 'ji haan', 'haan theek hai', 'bilkul kar dein'])
+def test_urdu_agreement_is_accepted(text):
+    assert affirmative(text)
 
+
+@pytest.mark.parametrize('text', ['جی', 'نہیں', 'جی نہیں', 'ہاں لیکن کل کر دیں', 'ٹھیک نہیں ہے',
+                                  'شاید', 'اچھا', 'ji', 'nahi', 'haan lekin shaam ko'])
+def test_urdu_refusals_conditions_and_bare_acknowledgements_are_rejected(text):
+    assert not affirmative(text)
+    
 def slot_list(result):
     times = []
     for w in result['data']['free_windows']:
