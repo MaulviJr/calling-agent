@@ -27,7 +27,10 @@ def push(client, env, sessions, business_id, existing=None):
             taken = db.get(VapiAssistant, existing)
             if taken and taken.business_id != business_id:
                 sys.exit('That assistant already belongs to a different business.')
-    config = assistant_config(env, settings)
+        # Operator overrides for this assistant (empty for a brand-new one)
+        current = db.get(VapiAssistant, existing) if existing else None
+        overrides = dict(current.overrides or {}) if current else {}
+    config = assistant_config(env, settings, overrides)
     verb = 'updated' if existing else 'created'
     response = (client.patch('/assistant/' + existing, json=config) if existing
                 else client.post('/assistant', json=config))

@@ -92,6 +92,7 @@ class VapiAssistant(Base):
     assistant_id: Mapped[str] = mapped_column(String(120), primary_key=True)
     business_id: Mapped[str] = mapped_column(ForeignKey('businesses.id'), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    overrides: Mapped[dict] = mapped_column(JSON, default=dict)
     
 class Operation(Base):
     __tablename__ = 'operations'

@@ -146,9 +146,16 @@ def tool_definitions(env):
         for name, args in schemas.items()
     ]
 
+ALLOWED_OVERRIDES = {'language', 'language_name', 'transcriber_provider', 'transcriber_model',
+                     'llm_provider', 'llm_model', 'voice_provider', 'voice_id', 'voice_model',
+                     'extra_instructions'}
 
-def assistant_config(env=None, business=None):
+
+def assistant_config(env=None, business=None, overrides=None):
     env = os.environ if env is None else env
+    o = {k: v for k, v in (overrides or {}).items() if k in ALLOWED_OVERRIDES}
+    language = o.get('language', 'en')
+    language_name = o.get('language_name', language)
     base = env.get('VAPI_PUBLIC_BASE_URL', '').rstrip('/')
     url = urlsplit(base)
     if url.scheme != 'https' or not url.netloc or url.username or url.password or url.query or url.fragment:
@@ -180,7 +187,7 @@ def assistant_config(env=None, business=None):
     inline = [tool for tool in tools if tool['function']['name'] not in attached]
     events = ['status-update']
     if actions_enabled:
-        events += ['transcript','end-of-call-report']
+        events += ['transcript', 'end-of-call-report']
     persona = business.assistant_name if business else 'Ava'
     prompt = SYSTEM_PROMPT.replace('CAPABILITIES', ACTION_PROMPT if actions_enabled else READ_ONLY_PROMPT)
     if business:
@@ -189,21 +196,34 @@ def assistant_config(env=None, business=None):
             f'You are {persona}, a warm receptionist for {business.name}, an appointment-based business.',
             1,
         )
+    if language != 'en':
+        prompt = prompt.replace('natural English', f'natural {language_name}', 1)
+        prompt += (f"\nSpeak with the caller in {language_name} unless they switch language. "
+                   "Say times and numbers the way a native speaker would.\n")
+    if o.get('extra_instructions'):
+        prompt += '\n' + o['extra_instructions'] + '\n'
+
+    voice_provider = o.get('voice_provider', env.get('VAPI_VOICE_PROVIDER', 'vapi'))
+    voice_config = {'provider': voice_provider,
+                    'voiceId': o.get('voice_id') or (business.voice_id if business and business.voice_id else voice)}
+    if voice_provider == 'vapi':
+        voice_config['version'] = voice_version
+    elif o.get('voice_model'):
+        voice_config['model'] = o['voice_model']
+
     default_name = 'Ava — receptionist' if actions_enabled else 'Ava — read-only comparison'
     return {
         'name': (f'{business.name} — {persona}' if business else default_name)[:40],
         'firstMessage': business.greeting if business else env.get('VAPI_FIRST_MESSAGE', 'Hi, this is Ava. How can I help?'),
-        'transcriber': {'provider': 'deepgram',
-                        'model': env.get('VAPI_TRANSCRIBER_MODEL', 'nova-3'),
-                        'language': 'en'},
-        'model': {'provider': env.get('VAPI_MODEL_PROVIDER', 'openai'),
-                  'model': env.get('VAPI_MODEL', 'gpt-4o-mini'),
+        'transcriber': {'provider': o.get('transcriber_provider', 'deepgram'),
+                        'model': o.get('transcriber_model', env.get('VAPI_TRANSCRIBER_MODEL', 'nova-3')),
+                        'language': language},
+        'model': {'provider': o.get('llm_provider', env.get('VAPI_MODEL_PROVIDER', 'openai')),
+                  'model': o.get('llm_model', env.get('VAPI_MODEL', 'gpt-4o-mini')),
                   'messages': [{'role': 'system', 'content': prompt}],
                   'tools': inline,
                   **({'toolIds': list(attached.values())} if attached else {})},
-        'voice': {'provider': env.get('VAPI_VOICE_PROVIDER', 'vapi'),
-                  'voiceId': business.voice_id if business and business.voice_id else voice,
-                  'version': voice_version},
+        'voice': voice_config,
         'startSpeakingPlan': {'waitSeconds': 0.4},
         'stopSpeakingPlan': {'numWords': 0, 'voiceSeconds': 0.2, 'backoffSeconds': 1},
         'server': {'url': base + '/api/vapi/events', 'credentialId': credential},
