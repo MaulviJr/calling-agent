@@ -8,7 +8,7 @@ import time
 from contextlib import contextmanager
 from datetime import date, datetime, time as daytime, timedelta
 from zoneinfo import ZoneInfo
-
+import unicodedata
 from pydantic import Field, field_validator
 from sqlalchemy import select, text
 
