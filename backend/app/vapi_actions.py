@@ -115,7 +115,9 @@ _URDU_STRONG = ['ہاں', 'ہان', 'ٹھیک', 'بالکل', 'ضرور', 'صح�
                 'haan', 'han', 'theek', 'thik', 'bilkul', 'zaroor', 'zarur', 'sahi',
                 'kardein', 'kardain', 'kardo', 'kardijiye']
 _URDU_FILLER = ['جی', 'آپ', 'براہ', 'مہربانی', 'شکریہ', 'پلیز', 'ہے',
-                'ji', 'jee', 'aap', 'ap', 'hai', 'mehrbani', 'meherbani', 'shukriya', 'shukria']
+                'کر', 'سکتے', 'سکتی', 'ہیں', 'بک', 'بکنگ', 'کریں', 'کیجیے', 'کیجئے',
+                'ji', 'jee', 'aap', 'ap', 'hai', 'mehrbani', 'meherbani', 'shukriya', 'shukria',
+                'kar', 'sakte', 'sakti', 'hain', 'hein', 'booking', 'karen', 'karein', 'kijiye']
 _STRONG |= {normalize(w) for w in _URDU_STRONG}
 _FILLER |= {normalize(w) for w in _URDU_FILLER}
 

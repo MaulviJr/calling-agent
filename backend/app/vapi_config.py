@@ -150,6 +150,12 @@ ALLOWED_OVERRIDES = {'language', 'language_name', 'transcriber_provider', 'trans
                      'llm_provider', 'llm_model', 'voice_provider', 'voice_id', 'voice_model',
                      'extra_instructions'}
 
+LANGUAGE_NOTES = {
+    'ur': ('To confirm an action, ask one short yes or no question and invite the caller to say '
+           '"جی ہاں", for example: "کیا میں booking کر دوں؟ جی ہاں یا نہیں کہہ دیں۔" '
+           'Never ask the caller to repeat a long phrase. If confirm_action is not verified, '
+           'ask once more for "جی ہاں" and do not invent other wording.'),
+}
 
 def assistant_config(env=None, business=None, overrides=None):
     env = os.environ if env is None else env
@@ -202,6 +208,7 @@ def assistant_config(env=None, business=None, overrides=None):
                    "Say times and numbers the way a native speaker would.\n")
     if o.get('extra_instructions'):
         prompt += '\n' + o['extra_instructions'] + '\n'
+        prompt += '\n' + LANGUAGE_NOTES.get(language, '') + '\n'
 
     voice_provider = o.get('voice_provider', env.get('VAPI_VOICE_PROVIDER', 'vapi'))
     voice_config = {'provider': voice_provider,

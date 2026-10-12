@@ -171,7 +171,6 @@ class Scheduling:
             if booking.call_id:
                 call=db.get(Call,booking.call_id)
                 if not call or call.business_id!=op.business_id: raise ValueError('Call not found.')
-            if settings.require_email and not booking.caller_email: raise ValueError('Email is required.')
             event_id = op.id  # hex is valid Google base32hex; stable across retries.
         else:
             existing=db.scalar(select(Appointment).where(Appointment.id==payload['appointment_id'],Appointment.business_id==op.business_id))
@@ -193,7 +192,16 @@ class Scheduling:
             end=self.validate(settings,booking.service_id,booking.start_at)
             if not self.free(db,op.business_id,settings,booking.start_at,end,event_id if existing else None):
                 raise ValueError('That time is no longer available. Please select another slot.')
-            body={'summary':'Ava appointment', 'start':{'dateTime':booking.start_at.isoformat(),'timeZone':settings.timezone},
+            service = next((s for s in settings.services if s.id == booking.service_id), None)
+            service_name = service.name if service else booking.service_id
+            details = [f'Service: {service_name}', f'Name: {booking.caller_name}',
+                       f'Phone: {booking.caller_phone}']
+            if booking.caller_email:
+                details.append(f'Email: {booking.caller_email}')
+            details.append('Booked by Ava (AI receptionist)')
+            body={'summary': f'{service_name} - {booking.caller_name}',
+                  'description': '\n'.join(details),
+                  'start':{'dateTime':booking.start_at.isoformat(),'timeZone':settings.timezone},
                   'end':{'dateTime':end.isoformat(),'timeZone':settings.timezone},
                   'extendedProperties':{'private':{'ava_operation':op.id,'ava_business':op.business_id}}}
             event=(self.calendar.update(event_id,body,event['etag']) if existing else self.calendar.create(event_id,body))
